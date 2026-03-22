@@ -252,7 +252,19 @@ export function JobDetailPage() {
     );
   }
 
-  const skills = job.skills ? JSON.parse(job.skills) as string[] : [];
+  let skills: string[] = [];
+  if (job.skills) {
+    if (Array.isArray(job.skills)) {
+      skills = job.skills;
+    } else if (typeof job.skills === "string") {
+      try {
+        const parsed = JSON.parse(job.skills);
+        skills = Array.isArray(parsed) ? parsed : [job.skills];
+      } catch {
+        skills = job.skills.split(",").map((s: string) => s.trim()).filter(Boolean);
+      }
+    }
+  }
 
   return (
     <div className="space-y-6">
