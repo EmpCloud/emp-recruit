@@ -9,18 +9,20 @@ import {
   Globe,
   Mail,
   X,
+  GitBranch,
 } from "lucide-react";
 import { apiGet, apiPost, apiPut } from "@/api/client";
 import toast from "react-hot-toast";
 import type { CareerPage, EmailTemplate } from "@emp-recruit/shared";
+import { PipelineSettingsPage } from "./PipelineSettingsPage";
 
 export function SettingsPage() {
-  const [tab, setTab] = useState<"career" | "email">("career");
+  const [tab, setTab] = useState<"career" | "email" | "pipeline">("career");
 
   return (
     <div>
       <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
-      <p className="mt-1 text-sm text-gray-500">Configure your career page and email templates.</p>
+      <p className="mt-1 text-sm text-gray-500">Configure your career page, email templates, and pipeline.</p>
 
       {/* Tab buttons */}
       <div className="mt-6 flex gap-1 rounded-lg border border-gray-200 bg-gray-100 p-1 w-fit">
@@ -42,10 +44,19 @@ export function SettingsPage() {
           <Mail className="h-4 w-4" />
           Email Templates
         </button>
+        <button
+          onClick={() => setTab("pipeline")}
+          className={`flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors ${
+            tab === "pipeline" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
+          }`}
+        >
+          <GitBranch className="h-4 w-4" />
+          Pipeline
+        </button>
       </div>
 
       <div className="mt-6">
-        {tab === "career" ? <CareerPageSettings /> : <EmailTemplateSettings />}
+        {tab === "career" ? <CareerPageSettings /> : tab === "email" ? <EmailTemplateSettings /> : <PipelineSettingsPage />}
       </div>
     </div>
   );

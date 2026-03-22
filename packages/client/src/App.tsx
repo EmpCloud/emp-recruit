@@ -69,6 +69,14 @@ const OfferDetailPage = lazy(() =>
 const OfferCreatePage = lazy(() =>
   import("@/pages/offers/OfferCreatePage").then((m) => ({ default: m.OfferCreatePage })),
 );
+const OfferLetterTemplatePage = lazy(() =>
+  import("@/pages/offers/OfferLetterTemplatePage").then((m) => ({ default: m.OfferLetterTemplatePage })),
+);
+
+// Comparison
+const ComparisonPage = lazy(() =>
+  import("@/pages/candidates/ComparisonPage").then((m) => ({ default: m.ComparisonPage })),
+);
 
 // Onboarding
 const OnboardingListPage = lazy(() =>
@@ -220,6 +228,7 @@ export default function App() {
           {/* Candidates */}
           <Route path="/candidates" element={<CandidateListPage />} />
           <Route path="/candidates/new" element={<CandidateCreatePage />} />
+          <Route path="/candidates/compare" element={<ComparisonPage />} />
           <Route path="/candidates/:id" element={<CandidateDetailPage />} />
 
           {/* Interviews */}
@@ -231,6 +240,7 @@ export default function App() {
           {/* Offers */}
           <Route path="/offers" element={<OfferListPage />} />
           <Route path="/offers/new" element={<OfferCreatePage />} />
+          <Route path="/offers/letter-templates" element={<OfferLetterTemplatePage />} />
           <Route path="/offers/:id" element={<OfferDetailPage />} />
 
           {/* Onboarding */}

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -13,11 +14,29 @@ import {
   Calendar,
   DollarSign,
   AlertCircle,
+  FileDown,
+  Eye,
+  Mail,
+  X,
 } from "lucide-react";
 import { apiGet, apiPost } from "@/api/client";
+import toast from "react-hot-toast";
 import type { Offer, OfferApprover } from "@emp-recruit/shared";
 
 type OfferDetail = Offer & { approvers: OfferApprover[] };
+
+interface OfferLetterTemplate {
+  id: string;
+  name: string;
+  is_default: boolean;
+}
+
+interface GeneratedLetter {
+  id: string;
+  content: string;
+  file_path: string | null;
+  sent_at: string | null;
+}
 
 const STATUS_CONFIG: Record<string, { label: string; className: string; icon: typeof Clock }> = {
   draft: { label: "Draft", className: "bg-gray-100 text-gray-700", icon: FileText },
@@ -100,6 +119,47 @@ export function OfferDetailPage() {
     mutationFn: () => apiPost(`/offers/${id}/decline`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["offer", id] }),
   });
+
+  // --- Offer Letter ---
+  const [showLetterPreview, setShowLetterPreview] = useState(false);
+  const [showTemplateSelect, setShowTemplateSelect] = useState(false);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
+
+  const { data: templatesData } = useQuery({
+    queryKey: ["offer-letter-templates"],
+    queryFn: () => apiGet<OfferLetterTemplate[]>("/offer-letters/templates"),
+    enabled: showTemplateSelect,
+  });
+
+  const { data: letterData, refetch: refetchLetter } = useQuery({
+    queryKey: ["offer-letter", id],
+    queryFn: () => apiGet<GeneratedLetter>(`/offer-letters/${id}`),
+    enabled: !!id,
+    retry: false,
+  });
+
+  const generateLetter = useMutation({
+    mutationFn: (templateId: string) =>
+      apiPost(`/offer-letters/generate/${id}`, { templateId }),
+    onSuccess: () => {
+      toast.success("Offer letter generated");
+      refetchLetter();
+      setShowTemplateSelect(false);
+    },
+    onError: (err: any) => toast.error(err.response?.data?.error?.message || "Failed to generate letter"),
+  });
+
+  const sendLetter = useMutation({
+    mutationFn: () => apiPost(`/offer-letters/${id}/send`),
+    onSuccess: () => {
+      toast.success("Offer letter sent to candidate");
+      refetchLetter();
+    },
+    onError: (err: any) => toast.error(err.response?.data?.error?.message || "Failed to send letter"),
+  });
+
+  const generatedLetter = letterData?.data;
+  const letterTemplates = templatesData?.data || [];
 
   if (isLoading) {
     return (
@@ -304,7 +364,139 @@ export function OfferDetailPage() {
               </div>
             )}
           </div>
+
+          {/* Offer Letter Section */}
+          <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                <FileDown className="h-5 w-5 text-gray-400" />
+                Offer Letter
+              </h2>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setShowTemplateSelect(true)}
+                  className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-3 py-2 text-sm font-medium text-white hover:bg-brand-700"
+                >
+                  <FileText className="h-4 w-4" />
+                  Generate Offer Letter
+                </button>
+                {generatedLetter && (
+                  <>
+                    <button
+                      onClick={() => setShowLetterPreview(true)}
+                      className="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                    >
+                      <Eye className="h-4 w-4" />
+                      Preview
+                    </button>
+                    <button
+                      onClick={() => sendLetter.mutate()}
+                      disabled={sendLetter.isPending}
+                      className="inline-flex items-center gap-2 rounded-lg bg-green-600 px-3 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
+                    >
+                      <Mail className="h-4 w-4" />
+                      {sendLetter.isPending ? "Sending..." : "Send to Candidate"}
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {generatedLetter ? (
+              <div className="mt-4 rounded-lg border border-green-200 bg-green-50 p-4">
+                <p className="text-sm text-green-800">
+                  Offer letter has been generated.
+                  {generatedLetter.sent_at && (
+                    <span className="ml-2 font-medium">
+                      Sent on {formatDate(generatedLetter.sent_at)}
+                    </span>
+                  )}
+                </p>
+              </div>
+            ) : (
+              <div className="mt-4 flex flex-col items-center justify-center py-8 text-center">
+                <FileText className="h-10 w-10 text-gray-300" />
+                <p className="mt-2 text-sm text-gray-500">
+                  No offer letter generated yet. Click "Generate Offer Letter" to create one from a template.
+                </p>
+              </div>
+            )}
+          </div>
         </div>
+
+        {/* Template Selection Modal */}
+        {showTemplateSelect && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+            <div className="relative w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
+              <button
+                onClick={() => setShowTemplateSelect(false)}
+                className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
+              >
+                <X className="h-5 w-5" />
+              </button>
+              <h3 className="text-lg font-semibold text-gray-900">Select Template</h3>
+              <p className="mt-1 text-sm text-gray-500">Choose a template to generate the offer letter.</p>
+              <div className="mt-4 space-y-2">
+                {letterTemplates.length === 0 ? (
+                  <p className="py-4 text-center text-sm text-gray-500">
+                    No templates found.{" "}
+                    <Link to="/offers/letter-templates" className="text-brand-600 hover:underline">
+                      Create one first.
+                    </Link>
+                  </p>
+                ) : (
+                  letterTemplates.map((t) => (
+                    <button
+                      key={t.id}
+                      onClick={() => setSelectedTemplateId(t.id)}
+                      className={`flex w-full items-center gap-3 rounded-lg border p-3 text-left transition-colors ${
+                        selectedTemplateId === t.id
+                          ? "border-brand-500 bg-brand-50"
+                          : "border-gray-200 hover:border-gray-300"
+                      }`}
+                    >
+                      <FileText className="h-5 w-5 text-gray-400" />
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-gray-900">{t.name}</p>
+                        {t.is_default && (
+                          <span className="text-xs text-blue-600">Default</span>
+                        )}
+                      </div>
+                    </button>
+                  ))
+                )}
+              </div>
+              {letterTemplates.length > 0 && (
+                <button
+                  onClick={() => selectedTemplateId && generateLetter.mutate(selectedTemplateId)}
+                  disabled={!selectedTemplateId || generateLetter.isPending}
+                  className="mt-4 w-full rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50"
+                >
+                  {generateLetter.isPending ? "Generating..." : "Generate Letter"}
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Letter Preview Modal */}
+        {showLetterPreview && generatedLetter && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+            <div className="relative w-full max-w-3xl max-h-[85vh] overflow-auto rounded-xl bg-white p-6 shadow-xl">
+              <button
+                onClick={() => setShowLetterPreview(false)}
+                className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
+              >
+                <X className="h-5 w-5" />
+              </button>
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Offer Letter Preview</h3>
+              <div
+                className="prose prose-sm max-w-none border border-gray-200 rounded-lg p-6"
+                dangerouslySetInnerHTML={{ __html: generatedLetter.content }}
+              />
+            </div>
+          </div>
+        )}
 
         {/* Approval Workflow Sidebar */}
         <div className="space-y-6">

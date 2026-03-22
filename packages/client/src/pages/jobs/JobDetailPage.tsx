@@ -17,11 +17,21 @@ import {
   Target,
   X,
   Loader2,
+  GitCompareArrows,
 } from "lucide-react";
 import { apiGet, apiPatch, apiPost } from "@/api/client";
 import type { JobPosting, PaginatedResponse, ApplicationStage, CandidateScore } from "@emp-recruit/shared";
 import { cn, formatDate } from "@/lib/utils";
 import toast from "react-hot-toast";
+
+interface PipelineStage {
+  id: string;
+  name: string;
+  slug: string;
+  color: string;
+  sort_order: number;
+  is_default: boolean;
+}
 
 const STATUS_BADGE: Record<string, string> = {
   draft: "bg-gray-100 text-gray-700",
@@ -122,6 +132,13 @@ export function JobDetailPage() {
   const [showRankings, setShowRankings] = useState(false);
   const [scoringAppId, setScoringAppId] = useState<string | null>(null);
   const [appScores, setAppScores] = useState<Record<string, number>>({});
+  const [compareSelection, setCompareSelection] = useState<Set<string>>(new Set());
+
+  // Fetch custom pipeline stages
+  const { data: stagesData } = useQuery({
+    queryKey: ["pipeline-stages"],
+    queryFn: () => apiGet<PipelineStage[]>("/pipeline/stages"),
+  });
 
   const { data: jobData, isLoading: loadingJob } = useQuery({
     queryKey: ["job", id],
@@ -186,16 +203,37 @@ export function JobDetailPage() {
   const job = jobData?.data;
   const applications = appsData?.data?.data ?? [];
   const rankings = rankingsData?.data ?? [];
+  const customStages = stagesData?.data ?? [];
+
+  // Use custom pipeline stages if available, otherwise fall back to hardcoded
+  const activePipelineStages: Array<{ slug: string; name: string; color: string }> = customStages.length > 0
+    ? customStages.map((s) => ({ slug: s.slug, name: s.name, color: s.color }))
+    : STAGE_ORDER.map((s) => ({ slug: s, name: s, color: "" }));
 
   // Group applications by stage
   const grouped: Record<string, AppWithCandidate[]> = {};
-  for (const stage of STAGE_ORDER) {
-    grouped[stage] = [];
+  for (const stage of activePipelineStages) {
+    grouped[stage.slug] = [];
   }
   for (const app of applications) {
     if (grouped[app.stage]) {
       grouped[app.stage].push(app);
     }
+  }
+
+  // Compare toggle
+  function toggleCompare(appId: string) {
+    setCompareSelection((prev) => {
+      const next = new Set(prev);
+      if (next.has(appId)) {
+        next.delete(appId);
+      } else if (next.size < 3) {
+        next.add(appId);
+      } else {
+        toast.error("Maximum 3 candidates can be compared");
+      }
+      return next;
+    });
   }
 
   if (loadingJob) {
@@ -341,6 +379,15 @@ export function JobDetailPage() {
 
           {applications.length > 0 && (
             <div className="flex gap-2">
+              {compareSelection.size >= 2 && (
+                <Link
+                  to={`/candidates/compare?ids=${Array.from(compareSelection).join(",")}`}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+                >
+                  <GitCompareArrows className="h-4 w-4" />
+                  Compare ({compareSelection.size})
+                </Link>
+              )}
               <button
                 onClick={() => batchScoreMutation.mutate()}
                 disabled={batchScoreMutation.isPending}
@@ -378,29 +425,31 @@ export function JobDetailPage() {
           </div>
         ) : (
           <div className="flex gap-4 overflow-x-auto pb-4">
-            {STAGE_ORDER.map((stage) => {
-              const cards = grouped[stage] ?? [];
-              if (stage === "withdrawn" && cards.length === 0) return null;
+            {activePipelineStages.map((stage) => {
+              const cards = grouped[stage.slug] ?? [];
+              if (stage.slug === "withdrawn" && cards.length === 0) return null;
+              const stageColor = stage.color || "#6B7280";
               return (
                 <div
-                  key={stage}
+                  key={stage.slug}
                   className="flex-shrink-0 w-64"
                 >
                   {/* Stage header */}
                   <div
                     className={cn(
                       "rounded-t-lg px-3 py-2 text-sm font-semibold capitalize",
-                      STAGE_HEADER[stage] ?? "bg-gray-100 text-gray-800",
+                      STAGE_HEADER[stage.slug] ?? "",
                     )}
+                    style={!STAGE_HEADER[stage.slug] ? { backgroundColor: stageColor + "22", color: stageColor, borderLeft: `3px solid ${stageColor}` } : undefined}
                   >
-                    {stage} ({cards.length})
+                    {stage.name} ({cards.length})
                   </div>
 
                   {/* Cards */}
                   <div
                     className={cn(
                       "min-h-[120px] rounded-b-lg border p-2 space-y-2",
-                      STAGE_COLORS[stage] ?? "bg-gray-50 border-gray-200",
+                      STAGE_COLORS[stage.slug] ?? "bg-gray-50 border-gray-200",
                     )}
                   >
                     {cards.length === 0 ? (
@@ -409,14 +458,26 @@ export function JobDetailPage() {
                       cards.map((app) => (
                         <div
                           key={app.id}
-                          className="rounded-lg bg-white border border-gray-200 p-3 shadow-sm hover:shadow-md transition-shadow"
+                          className={cn(
+                            "rounded-lg bg-white border p-3 shadow-sm hover:shadow-md transition-shadow",
+                            compareSelection.has(app.id) ? "border-indigo-400 ring-1 ring-indigo-200" : "border-gray-200",
+                          )}
                         >
-                          <Link to={`/candidates/${app.id}`}>
-                            <p className="text-sm font-medium text-gray-900">
-                              {app.candidate_first_name} {app.candidate_last_name}
-                            </p>
-                            <p className="text-xs text-gray-500 truncate">{app.candidate_email}</p>
-                          </Link>
+                          <div className="flex items-start justify-between">
+                            <Link to={`/candidates/${app.id}`} className="flex-1 min-w-0">
+                              <p className="text-sm font-medium text-gray-900">
+                                {app.candidate_first_name} {app.candidate_last_name}
+                              </p>
+                              <p className="text-xs text-gray-500 truncate">{app.candidate_email}</p>
+                            </Link>
+                            <input
+                              type="checkbox"
+                              checked={compareSelection.has(app.id)}
+                              onChange={() => toggleCompare(app.id)}
+                              className="ml-2 h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                              title="Select for comparison"
+                            />
+                          </div>
                           <div className="mt-2 flex items-center justify-between">
                             <span className="text-xs text-gray-400 inline-flex items-center gap-1">
                               <Calendar className="h-3 w-3" />

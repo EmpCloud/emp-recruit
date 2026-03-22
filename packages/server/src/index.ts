@@ -29,8 +29,12 @@ import { referralRoutes } from "./api/routes/referral.routes";
 import { analyticsRoutes } from "./api/routes/analytics.routes";
 import { emailTemplateRoutes } from "./api/routes/email-template.routes";
 import { scoringRoutes } from "./api/routes/scoring.routes";
+import { offerLetterRoutes } from "./api/routes/offer-letter.routes";
+import { comparisonRoutes } from "./api/routes/comparison.routes";
+import { pipelineRoutes } from "./api/routes/pipeline.routes";
 import { errorHandler } from "./api/middleware/error.middleware";
 import { apiLimiter, authLimiter } from "./api/middleware/rate-limit.middleware";
+import { swaggerUIHandler, openapiHandler } from "./api/docs";
 
 const app = express();
 
@@ -89,6 +93,9 @@ v1.use("/email-templates", emailTemplateRoutes);
 v1.use("/career-pages", careerPageRoutes);
 v1.use("/analytics", analyticsRoutes);
 v1.use("/scoring", scoringRoutes);
+v1.use("/offer-letters", offerLetterRoutes);
+v1.use("/applications", comparisonRoutes);
+v1.use("/pipeline", pipelineRoutes);
 
 // Public routes (no auth required) — career pages, job listings, applications
 app.use("/api/v1/public", publicRoutes);
@@ -100,6 +107,10 @@ app.use("/api/v1", v1);
 
 // Static file serving for uploads
 app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
+
+// API Documentation
+app.get("/api/docs", swaggerUIHandler);
+app.get("/api/docs/openapi.json", openapiHandler);
 
 // ---------------------------------------------------------------------------
 // Error handling
