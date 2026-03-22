@@ -23,10 +23,12 @@ import { onboardingRoutes } from "./api/routes/onboarding.routes";
 import { interviewRoutes } from "./api/routes/interview.routes";
 import { authRoutes } from "./api/routes/auth.routes";
 import { publicRoutes } from "./api/routes/public.routes";
+import { portalRoutes } from "./api/routes/portal.routes";
 import { careerPageRoutes } from "./api/routes/career-page.routes";
 import { referralRoutes } from "./api/routes/referral.routes";
 import { analyticsRoutes } from "./api/routes/analytics.routes";
 import { emailTemplateRoutes } from "./api/routes/email-template.routes";
+import { scoringRoutes } from "./api/routes/scoring.routes";
 import { errorHandler } from "./api/middleware/error.middleware";
 import { apiLimiter, authLimiter } from "./api/middleware/rate-limit.middleware";
 
@@ -86,9 +88,13 @@ v1.use("/referrals", referralRoutes);
 v1.use("/email-templates", emailTemplateRoutes);
 v1.use("/career-pages", careerPageRoutes);
 v1.use("/analytics", analyticsRoutes);
+v1.use("/scoring", scoringRoutes);
 
 // Public routes (no auth required) — career pages, job listings, applications
 app.use("/api/v1/public", publicRoutes);
+
+// Candidate portal routes (portal auth — separate from employee auth)
+app.use("/api/v1/portal", portalRoutes);
 
 app.use("/api/v1", v1);
 

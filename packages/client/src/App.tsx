@@ -7,6 +7,7 @@ import { apiPost } from "@/api/client";
 // Layouts (eagerly loaded)
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
 import { PublicLayout } from "@/components/layout/PublicLayout";
+import { PortalLayout } from "@/components/layout/PortalLayout";
 
 // Lazy-loaded pages
 const LoginPage = lazy(() =>
@@ -107,6 +108,25 @@ const CareerApplyPage = lazy(() =>
 );
 const ApplicationSuccessPage = lazy(() =>
   import("@/pages/careers/ApplicationSuccessPage").then((m) => ({ default: m.ApplicationSuccessPage })),
+);
+
+// Scoring
+const ScoreReportPage = lazy(() =>
+  import("@/pages/scoring/ScoreReportPage").then((m) => ({ default: m.ScoreReportPage })),
+);
+
+// Candidate Portal
+const PortalRequestPage = lazy(() =>
+  import("@/pages/portal/PortalRequestPage").then((m) => ({ default: m.PortalRequestPage })),
+);
+const PortalDashboardPage = lazy(() =>
+  import("@/pages/portal/PortalDashboardPage").then((m) => ({ default: m.PortalDashboardPage })),
+);
+const PortalApplicationDetailPage = lazy(() =>
+  import("@/pages/portal/PortalApplicationDetailPage").then((m) => ({ default: m.PortalApplicationDetailPage })),
+);
+const PortalInterviewsPage = lazy(() =>
+  import("@/pages/portal/PortalInterviewsPage").then((m) => ({ default: m.PortalInterviewsPage })),
 );
 
 function PageLoader() {
@@ -218,6 +238,9 @@ export default function App() {
           <Route path="/onboarding/templates" element={<OnboardingTemplatesPage />} />
           <Route path="/onboarding/:id" element={<OnboardingDetailPage />} />
 
+          {/* Scoring */}
+          <Route path="/scoring/:appId" element={<ScoreReportPage />} />
+
           {/* Referrals */}
           <Route path="/referrals" element={<ReferralListPage />} />
 
@@ -226,6 +249,14 @@ export default function App() {
 
           {/* Settings */}
           <Route path="/settings" element={<SettingsPage />} />
+        </Route>
+
+        {/* Candidate Portal (no employee auth — uses portal tokens) */}
+        <Route path="/portal" element={<PortalLayout />}>
+          <Route index element={<PortalRequestPage />} />
+          <Route path="dashboard" element={<PortalDashboardPage />} />
+          <Route path="applications/:id" element={<PortalApplicationDetailPage />} />
+          <Route path="interviews" element={<PortalInterviewsPage />} />
         </Route>
 
         {/* Public career pages (no auth) */}

@@ -11,9 +11,15 @@ import {
   Users,
   Star,
   Calendar,
+  Brain,
+  Sparkles,
+  BarChart,
+  Target,
+  X,
+  Loader2,
 } from "lucide-react";
-import { apiGet, apiPatch } from "@/api/client";
-import type { JobPosting, PaginatedResponse, ApplicationStage } from "@emp-recruit/shared";
+import { apiGet, apiPatch, apiPost } from "@/api/client";
+import type { JobPosting, PaginatedResponse, ApplicationStage, CandidateScore } from "@emp-recruit/shared";
 import { cn, formatDate } from "@/lib/utils";
 import toast from "react-hot-toast";
 
@@ -55,6 +61,13 @@ const STAGE_HEADER: Record<string, string> = {
   withdrawn: "bg-gray-100 text-gray-800",
 };
 
+const RECOMMENDATION_BADGE: Record<string, { label: string; className: string }> = {
+  strong_match: { label: "Strong Match", className: "bg-green-100 text-green-800" },
+  good_match: { label: "Good Match", className: "bg-blue-100 text-blue-800" },
+  partial_match: { label: "Partial Match", className: "bg-yellow-100 text-yellow-800" },
+  weak_match: { label: "Weak Match", className: "bg-red-100 text-red-800" },
+};
+
 interface AppWithCandidate {
   id: string;
   stage: string;
@@ -65,10 +78,50 @@ interface AppWithCandidate {
   candidate_email: string;
 }
 
+interface RankedCandidate {
+  id: string;
+  application_id: string;
+  candidate_id: string;
+  candidate_first_name: string;
+  candidate_last_name: string;
+  candidate_email: string;
+  application_stage: string;
+  overall_score: number;
+  skills_score: number;
+  experience_score: number;
+  matched_skills: string;
+  missing_skills: string;
+  recommendation: string;
+}
+
+function ScoreBadge({ score }: { score: number }) {
+  const colorClass =
+    score >= 80
+      ? "bg-green-100 text-green-800"
+      : score >= 50
+        ? "bg-yellow-100 text-yellow-800"
+        : "bg-red-100 text-red-800";
+
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-xs font-semibold",
+        colorClass,
+      )}
+    >
+      <Brain className="h-3 w-3" />
+      {score}
+    </span>
+  );
+}
+
 export function JobDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const [showRankings, setShowRankings] = useState(false);
+  const [scoringAppId, setScoringAppId] = useState<string | null>(null);
+  const [appScores, setAppScores] = useState<Record<string, number>>({});
 
   const { data: jobData, isLoading: loadingJob } = useQuery({
     queryKey: ["job", id],
@@ -83,6 +136,12 @@ export function JobDetailPage() {
     enabled: Boolean(id),
   });
 
+  const { data: rankingsData, isLoading: loadingRankings, refetch: refetchRankings } = useQuery({
+    queryKey: ["job-rankings", id],
+    queryFn: () => apiGet<RankedCandidate[]>(`/scoring/jobs/${id}/rankings`),
+    enabled: Boolean(id) && showRankings,
+  });
+
   const statusMutation = useMutation({
     mutationFn: (status: string) => apiPatch<JobPosting>(`/jobs/${id}/status`, { status }),
     onSuccess: () => {
@@ -92,8 +151,41 @@ export function JobDetailPage() {
     onError: () => toast.error("Failed to update status"),
   });
 
+  const scoreAppMutation = useMutation({
+    mutationFn: (appId: string) => apiPost<any>(`/scoring/applications/${appId}/score`),
+    onSuccess: (data, appId) => {
+      const score = data?.data?.overallScore;
+      if (score !== undefined) {
+        setAppScores((prev) => ({ ...prev, [appId]: score }));
+      }
+      toast.success("Candidate scored successfully");
+      queryClient.invalidateQueries({ queryKey: ["job-rankings", id] });
+      setScoringAppId(null);
+    },
+    onError: () => {
+      toast.error("Failed to score candidate");
+      setScoringAppId(null);
+    },
+  });
+
+  const batchScoreMutation = useMutation({
+    mutationFn: () => apiPost<any>(`/scoring/jobs/${id}/batch-score`),
+    onSuccess: (data) => {
+      const results = data?.data?.results ?? [];
+      const newScores: Record<string, number> = {};
+      for (const r of results) {
+        newScores[r.applicationId] = r.overallScore;
+      }
+      setAppScores((prev) => ({ ...prev, ...newScores }));
+      toast.success(`Scored ${data?.data?.scored ?? 0} candidates`);
+      queryClient.invalidateQueries({ queryKey: ["job-rankings", id] });
+    },
+    onError: () => toast.error("Failed to batch score candidates"),
+  });
+
   const job = jobData?.data;
   const applications = appsData?.data?.data ?? [];
+  const rankings = rankingsData?.data ?? [];
 
   // Group applications by stage
   const grouped: Record<string, AppWithCandidate[]> = {};
@@ -242,9 +334,38 @@ export function JobDetailPage() {
 
       {/* Kanban Pipeline */}
       <div>
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">
-          Application Pipeline ({applications.length} applicant{applications.length !== 1 ? "s" : ""})
-        </h2>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-semibold text-gray-900">
+            Application Pipeline ({applications.length} applicant{applications.length !== 1 ? "s" : ""})
+          </h2>
+
+          {applications.length > 0 && (
+            <div className="flex gap-2">
+              <button
+                onClick={() => batchScoreMutation.mutate()}
+                disabled={batchScoreMutation.isPending}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-purple-600 px-3 py-2 text-sm font-medium text-white hover:bg-purple-700 disabled:opacity-50"
+              >
+                {batchScoreMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Sparkles className="h-4 w-4" />
+                )}
+                Batch Score All
+              </button>
+              <button
+                onClick={() => {
+                  setShowRankings(true);
+                  refetchRankings();
+                }}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-purple-300 px-3 py-2 text-sm font-medium text-purple-700 hover:bg-purple-50"
+              >
+                <BarChart className="h-4 w-4" />
+                Rankings
+              </button>
+            </div>
+          )}
+        </div>
 
         {loadingApps ? (
           <div className="flex justify-center py-8">
@@ -286,28 +407,61 @@ export function JobDetailPage() {
                       <p className="py-4 text-center text-xs text-gray-400">No applicants</p>
                     ) : (
                       cards.map((app) => (
-                        <Link
+                        <div
                           key={app.id}
-                          to={`/candidates/${app.id}`}
-                          className="block rounded-lg bg-white border border-gray-200 p-3 shadow-sm hover:shadow-md transition-shadow"
+                          className="rounded-lg bg-white border border-gray-200 p-3 shadow-sm hover:shadow-md transition-shadow"
                         >
-                          <p className="text-sm font-medium text-gray-900">
-                            {app.candidate_first_name} {app.candidate_last_name}
-                          </p>
-                          <p className="text-xs text-gray-500 truncate">{app.candidate_email}</p>
+                          <Link to={`/candidates/${app.id}`}>
+                            <p className="text-sm font-medium text-gray-900">
+                              {app.candidate_first_name} {app.candidate_last_name}
+                            </p>
+                            <p className="text-xs text-gray-500 truncate">{app.candidate_email}</p>
+                          </Link>
                           <div className="mt-2 flex items-center justify-between">
                             <span className="text-xs text-gray-400 inline-flex items-center gap-1">
                               <Calendar className="h-3 w-3" />
                               {formatDate(app.applied_at)}
                             </span>
-                            {app.rating !== null && (
-                              <span className="inline-flex items-center gap-0.5 text-xs text-amber-600">
-                                <Star className="h-3 w-3 fill-amber-400" />
-                                {app.rating}
-                              </span>
-                            )}
+                            <div className="flex items-center gap-1">
+                              {app.rating !== null && (
+                                <span className="inline-flex items-center gap-0.5 text-xs text-amber-600">
+                                  <Star className="h-3 w-3 fill-amber-400" />
+                                  {app.rating}
+                                </span>
+                              )}
+                              {appScores[app.id] !== undefined && (
+                                <ScoreBadge score={appScores[app.id]} />
+                              )}
+                            </div>
                           </div>
-                        </Link>
+                          <div className="mt-2 flex items-center gap-1">
+                            <button
+                              onClick={(e) => {
+                                e.preventDefault();
+                                setScoringAppId(app.id);
+                                scoreAppMutation.mutate(app.id);
+                              }}
+                              disabled={scoringAppId === app.id}
+                              className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium text-purple-700 bg-purple-50 hover:bg-purple-100 disabled:opacity-50"
+                              title="AI Score this candidate"
+                            >
+                              {scoringAppId === app.id ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : (
+                                <Brain className="h-3 w-3" />
+                              )}
+                              AI Score
+                            </button>
+                            <Link
+                              to={`/scoring/${app.id}`}
+                              className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium text-gray-600 bg-gray-50 hover:bg-gray-100"
+                              title="View score report"
+                            >
+                              <Target className="h-3 w-3" />
+                              Report
+                            </Link>
+                          </div>
+                        </div>
                       ))
                     )}
                   </div>
@@ -317,6 +471,134 @@ export function JobDetailPage() {
           </div>
         )}
       </div>
+
+      {/* Rankings Sidebar/Modal */}
+      {showRankings && (
+        <div className="fixed inset-0 z-50 flex justify-end">
+          <div
+            className="absolute inset-0 bg-black/30"
+            onClick={() => setShowRankings(false)}
+          />
+          <div className="relative w-full max-w-lg bg-white shadow-xl overflow-y-auto">
+            <div className="sticky top-0 bg-white border-b border-gray-200 p-4 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-gray-900 inline-flex items-center gap-2">
+                <BarChart className="h-5 w-5 text-purple-600" />
+                AI Score Rankings
+              </h3>
+              <button
+                onClick={() => setShowRankings(false)}
+                className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="p-4 space-y-3">
+              {loadingRankings ? (
+                <div className="flex justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin text-purple-600" />
+                </div>
+              ) : rankings.length === 0 ? (
+                <div className="py-8 text-center">
+                  <Brain className="mx-auto h-10 w-10 text-gray-300" />
+                  <p className="mt-2 text-sm text-gray-500">
+                    No candidates have been scored yet. Use "Batch Score All" to score all candidates.
+                  </p>
+                </div>
+              ) : (
+                rankings.map((r: RankedCandidate, idx: number) => {
+                  const matchedSkills: string[] = r.matched_skills
+                    ? JSON.parse(r.matched_skills)
+                    : [];
+                  const missingSkills: string[] = r.missing_skills
+                    ? JSON.parse(r.missing_skills)
+                    : [];
+                  const recBadge = RECOMMENDATION_BADGE[r.recommendation];
+
+                  return (
+                    <div
+                      key={r.id}
+                      className="rounded-lg border border-gray-200 p-4 hover:border-purple-200 transition-colors"
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex items-center gap-3">
+                          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-purple-100 text-sm font-bold text-purple-700">
+                            {idx + 1}
+                          </span>
+                          <div>
+                            <Link
+                              to={`/scoring/${r.application_id}`}
+                              className="text-sm font-medium text-gray-900 hover:text-purple-700"
+                            >
+                              {r.candidate_first_name} {r.candidate_last_name}
+                            </Link>
+                            <p className="text-xs text-gray-500">{r.candidate_email}</p>
+                          </div>
+                        </div>
+                        <ScoreBadge score={r.overall_score} />
+                      </div>
+
+                      <div className="mt-3 flex gap-4 text-xs">
+                        <div>
+                          <span className="text-gray-500">Skills:</span>{" "}
+                          <span className="font-medium">{r.skills_score}/100</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-500">Experience:</span>{" "}
+                          <span className="font-medium">{r.experience_score}/100</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-500">Stage:</span>{" "}
+                          <span className="font-medium capitalize">{r.application_stage}</span>
+                        </div>
+                      </div>
+
+                      {recBadge && (
+                        <div className="mt-2">
+                          <span
+                            className={cn(
+                              "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
+                              recBadge.className,
+                            )}
+                          >
+                            {recBadge.label}
+                          </span>
+                        </div>
+                      )}
+
+                      {(matchedSkills.length > 0 || missingSkills.length > 0) && (
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          {matchedSkills.slice(0, 5).map((s) => (
+                            <span
+                              key={s}
+                              className="inline-flex items-center rounded-full bg-green-50 px-2 py-0.5 text-xs text-green-700"
+                            >
+                              {s}
+                            </span>
+                          ))}
+                          {missingSkills.slice(0, 3).map((s) => (
+                            <span
+                              key={s}
+                              className="inline-flex items-center rounded-full bg-red-50 px-2 py-0.5 text-xs text-red-600"
+                            >
+                              {s}
+                            </span>
+                          ))}
+                          {matchedSkills.length + missingSkills.length > 8 && (
+                            <span className="text-xs text-gray-400">
+                              +{matchedSkills.length + missingSkills.length - 8} more
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

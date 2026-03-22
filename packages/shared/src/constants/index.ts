@@ -74,3 +74,9 @@ export const RATING_LABELS: Record<number, string> = {
   4: "Good",
   5: "Excellent",
 };
+
+// ---------------------------------------------------------------------------
+// Skills Dictionary (AI Scoring)
+// ---------------------------------------------------------------------------
+
+export { TECH_SKILLS, SOFT_SKILLS, ALL_SKILLS } from "./skills";

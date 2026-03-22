@@ -75,6 +75,13 @@ export enum Recommendation {
   STRONG_NO = "strong_no",
 }
 
+export enum ScoringRecommendation {
+  STRONG_MATCH = "strong_match",
+  GOOD_MATCH = "good_match",
+  PARTIAL_MATCH = "partial_match",
+  WEAK_MATCH = "weak_match",
+}
+
 export enum CandidateSource {
   DIRECT = "direct",
   REFERRAL = "referral",
@@ -382,4 +389,21 @@ export interface AuditLog {
   ip_address: string | null;
   user_agent: string | null;
   created_at: string;
+}
+
+export interface CandidateScore {
+  id: string;
+  organization_id: number;
+  application_id: string;
+  candidate_id: string;
+  job_id: string;
+  overall_score: number;
+  skills_score: number;
+  experience_score: number;
+  matched_skills: string; // JSON array
+  missing_skills: string; // JSON array
+  recommendation: ScoringRecommendation;
+  scored_at: string;
+  created_at: string;
+  updated_at: string;
 }
