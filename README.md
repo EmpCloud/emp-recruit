@@ -68,6 +68,37 @@ EMP Recruit is the recruitment and applicant tracking module of the EmpCloud eco
 
 ---
 
+## Screenshots
+
+### Dashboard
+![Dashboard](e2e/screenshots/recruit-01-dashboard.png)
+
+### Job Postings
+![Jobs](e2e/screenshots/recruit-02-jobs.png)
+
+### Job Detail with ATS Pipeline
+![Job Detail](e2e/screenshots/recruit-03-job-detail.png)
+
+### Candidates
+![Candidates](e2e/screenshots/recruit-04-candidates.png)
+
+### Interviews
+![Interviews](e2e/screenshots/recruit-05-interviews.png)
+
+### Interview Detail (Meet Link + Calendar)
+![Interview Detail](e2e/screenshots/recruit-06-interview-detail.png)
+
+### Offers
+![Offers](e2e/screenshots/recruit-07-offers.png)
+
+### Recruitment Analytics
+![Analytics](e2e/screenshots/recruit-08-analytics.png)
+
+### Settings
+![Settings](e2e/screenshots/recruit-09-settings.png)
+
+---
+
 ## Tech Stack
 
 | Layer | Technology |
