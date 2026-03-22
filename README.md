@@ -4,8 +4,35 @@
 
 [![Part of EmpCloud](https://img.shields.io/badge/EmpCloud-Module-blue)]()
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-purple.svg)](LICENSE)
+[![Status: Built](https://img.shields.io/badge/Status-Built-green)]()
 
 EMP Recruit is the recruitment and applicant tracking module of the EmpCloud ecosystem. It provides end-to-end hiring workflow management from job posting through candidate tracking, interviews, offers, and onboarding.
+
+**GitHub:** https://github.com/EmpCloud/emp-recruit
+
+---
+
+## Project Status
+
+**Built** -- all phases implemented and tested.
+
+| Test Suite | Count | Details |
+|------------|-------|---------|
+| API E2E tests | 55 | Full endpoint coverage |
+| Interview E2E tests | 33 | Scheduling, recordings, transcripts, calendar, invitations |
+| SSO unit tests | 6 | Token exchange and validation |
+| Playwright browser tests | 21 | End-to-end UI flows with screenshots |
+| **Total** | **115** | All passing |
+
+---
+
+## Live URLs
+
+| Environment | URL |
+|-------------|-----|
+| Ngrok (public) | https://unliterary-acronically-sharee.ngrok-free.dev |
+| Client (local) | http://localhost:5179 |
+| API (local) | http://localhost:4500 |
 
 ---
 
@@ -19,6 +46,12 @@ EMP Recruit is the recruitment and applicant tracking module of the EmpCloud eco
 | Candidate Management | Candidate profiles, resume upload/parsing, notes, tags |
 | Interview Scheduling | Schedule interviews, assign interviewers, calendar integration |
 | Interview Feedback | Structured scorecards, interviewer ratings, recommendation |
+| Video Conferencing | Google Meet and Jitsi Meet integration with real working meeting links |
+| Interview Recording Upload | Audio/video recording upload support up to 500MB per file |
+| Automatic Transcription | Transcript generation from uploaded interview recordings |
+| Add to Calendar | Google Calendar, Outlook, Office 365 links and .ics file download |
+| Email Invitations | Send interview invitations with calendar links to candidates and panelists |
+| SSO Authentication | Single sign-on from EMP Cloud dashboard via JWT token exchange |
 | Offer Management | Generate offer letters, approval workflow, e-signature |
 | Onboarding Checklists | Pre-joining tasks, document collection, IT provisioning, welcome kit |
 | Referral Program | Employee referral tracking, bonus eligibility |
@@ -38,7 +71,7 @@ EMP Recruit is the recruitment and applicant tracking module of the EmpCloud eco
 | Styling | Tailwind CSS, Radix UI |
 | Database | MySQL 8 via Knex.js (`emp_recruit` database) |
 | Cache / Queue | Redis 7, BullMQ |
-| Auth | OAuth2/OIDC via EMP Cloud (RS256 JWT verification) |
+| Auth | OAuth2/OIDC via EMP Cloud (RS256 JWT verification), SSO token exchange |
 | File Uploads | Multer (local storage, S3-ready) |
 
 ---
@@ -85,7 +118,7 @@ emp-recruit/
 
 ---
 
-## Database Tables
+## Database Tables (20)
 
 | Table | Purpose |
 |-------|---------|
@@ -96,6 +129,8 @@ emp-recruit/
 | `interviews` | Scheduled interviews with type, time, location, meeting link |
 | `interview_panelists` | Interviewer assignments per interview |
 | `interview_feedback` | Structured scorecard ratings and recommendations |
+| `interview_recordings` | Audio/video recording metadata and file paths for interviews |
+| `interview_transcripts` | Generated transcripts from interview recordings |
 | `offers` | Offer details with salary, designation, approval status |
 | `offer_approvers` | Multi-step offer approval chain |
 | `onboarding_templates` | Reusable onboarding task templates |
@@ -113,6 +148,11 @@ emp-recruit/
 ## API Endpoints
 
 All endpoints under `/api/v1/`. Server runs on port **4500**.
+
+### Authentication
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/auth/sso` | SSO token exchange (EMP Cloud JWT -> Recruit session token) |
 
 ### Job Postings
 | Method | Path | Description |
@@ -151,6 +191,16 @@ All endpoints under `/api/v1/`. Server runs on port **4500**.
 | GET | `/interviews/:id` | Get interview detail |
 | PUT | `/interviews/:id` | Reschedule/update |
 | POST | `/interviews/:id/feedback` | Submit feedback scorecard |
+| POST | `/interviews/:id/generate-meet` | Generate Google Meet or Jitsi Meet link |
+| POST | `/interviews/:id/send-invitation` | Send email invitation with calendar links |
+| POST | `/interviews/:id/recordings` | Upload interview recording (audio/video, up to 500MB) |
+| GET | `/interviews/:id/recordings` | List recordings for an interview |
+| DELETE | `/interviews/:id/recordings` | Delete a recording |
+| POST | `/interviews/:id/recordings/:recId/transcribe` | Generate transcript from a recording |
+| GET | `/interviews/:id/transcript` | Get interview transcript |
+| PUT | `/interviews/:id/transcript` | Update/edit interview transcript |
+| GET | `/interviews/:id/calendar-links` | Get calendar links (Google, Outlook, Office 365) |
+| GET | `/interviews/:id/calendar.ics` | Download .ics calendar file |
 
 ### Offers
 | Method | Path | Description |
@@ -182,6 +232,20 @@ All endpoints under `/api/v1/`. Server runs on port **4500**.
 - **Career Page Admin**: Config and publish controls
 - **Analytics**: Overview, pipeline funnel, time-to-hire, source effectiveness
 - **Job Board Integration**: Post/remove jobs on external boards
+
+---
+
+## SSO Authentication
+
+EMP Recruit supports single sign-on from the EMP Cloud dashboard. The flow works as follows:
+
+1. User clicks "Recruit" in the EMP Cloud dashboard
+2. EMP Cloud generates a short-lived JWT and redirects to EMP Recruit with a `?sso_token=<jwt>` URL parameter
+3. The Recruit client extracts the token and sends it to `POST /api/v1/auth/sso`
+4. The server validates the JWT against EMP Cloud's public key, resolves the user and organization, and issues a module-specific Recruit session token
+5. The client stores the Recruit token and the user is authenticated without any login form
+
+This allows seamless navigation between EMP Cloud and Recruit without requiring users to log in again.
 
 ---
 
@@ -223,7 +287,7 @@ All endpoints under `/api/v1/`. Server runs on port **4500**.
 
 ### Install
 ```bash
-git clone https://github.com/anthropic/emp-recruit.git
+git clone https://github.com/EmpCloud/emp-recruit.git
 cd emp-recruit
 pnpm install
 ```
@@ -251,39 +315,6 @@ pnpm --filter @emp-recruit/client dev    # Client on :5179
 # Run migrations
 pnpm --filter @emp-recruit/server migrate
 ```
-
----
-
-## Implementation Plan
-
-### Phase 1: MVP (Weeks 1-3)
-**Goal:** Basic job posting and application tracking.
-1. Monorepo scaffolding (package.json, tsconfig, docker-compose)
-2. Database layer (dual connections, Migration 001: jobs, candidates, applications)
-3. Server foundation (Express, auth middleware, RBAC, error handling)
-4. Job Posting CRUD, Candidate CRUD, Application pipeline
-5. Client scaffolding (Vite, Tailwind, routing, auth)
-6. Job pages, Candidate pages, Kanban board, Basic dashboard
-
-### Phase 2: Core Features (Weeks 4-6)
-**Goal:** Interviews, offers, career page, email.
-1. Migration 002 (interviews, panelists, feedback)
-2. Interview scheduling and feedback scorecards
-3. Migration 003 (offers, onboarding)
-4. Offer approval workflow
-5. Career page (admin config + public routes)
-6. Email templates with Handlebars, BullMQ email queue
-7. Client pages for interviews, offers, career page admin
-
-### Phase 3: Advanced (Weeks 7-9)
-**Goal:** Onboarding, referrals, analytics, integrations.
-1. Onboarding templates and checklists
-2. Referral program
-3. Migration 005 (job board postings, recruitment events)
-4. Analytics dashboard (time-to-hire, funnel, sources)
-5. Job board integration (LinkedIn, Indeed, Naukri)
-6. Resume parsing queue, Calendar integration (.ics)
-7. E2E tests with Playwright
 
 ---
 
