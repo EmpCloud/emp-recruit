@@ -6,7 +6,7 @@
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-purple.svg)](LICENSE)
 [![Status: Built](https://img.shields.io/badge/Status-Built-green)]()
 
-EMP Recruit is the recruitment and applicant tracking module of the EmpCloud ecosystem. It provides end-to-end hiring workflow management from job posting through candidate tracking, interviews, offers, and onboarding.
+EMP Recruit is the recruitment and applicant tracking module of the EmpCloud ecosystem. It provides end-to-end hiring workflow management from job posting through candidate tracking, interviews, offers, and onboarding — plus AI resume scoring, candidate portal, offer letter PDF generation, candidate comparison, and custom pipeline stages.
 
 **GitHub:** https://github.com/EmpCloud/emp-recruit
 
@@ -21,8 +21,8 @@ EMP Recruit is the recruitment and applicant tracking module of the EmpCloud eco
 | API E2E tests | 55 | Full endpoint coverage |
 | Interview E2E tests | 33 | Scheduling, recordings, transcripts, calendar, invitations |
 | SSO unit tests | 6 | Token exchange and validation |
-| Playwright browser tests | 21 | End-to-end UI flows with screenshots |
-| **Total** | **115** | All passing |
+| Playwright browser tests | 21+ | End-to-end UI flows with screenshots |
+| **Total** | **115+** | All passing |
 
 ---
 
@@ -33,31 +33,38 @@ EMP Recruit is the recruitment and applicant tracking module of the EmpCloud eco
 | Ngrok (public) | https://unliterary-acronically-sharee.ngrok-free.dev |
 | Client (local) | http://localhost:5179 |
 | API (local) | http://localhost:4500 |
+| API Documentation | http://localhost:4500/api/docs |
 
 ---
 
 ## Features
 
-| Feature | Description |
-|---------|-------------|
-| Job Postings | Create openings with title, description, requirements, department, location, salary range, employment type |
-| Career Page | Public-facing careers page, customizable per organization |
-| Application Tracking (ATS) | Kanban pipeline: Applied -> Screened -> Interview -> Offer -> Hired/Rejected |
-| Candidate Management | Candidate profiles, resume upload/parsing, notes, tags |
-| Interview Scheduling | Schedule interviews, assign interviewers, calendar integration |
-| Interview Feedback | Structured scorecards, interviewer ratings, recommendation |
-| Video Conferencing | Google Meet and Jitsi Meet integration with real working meeting links |
-| Interview Recording Upload | Audio/video recording upload support up to 500MB per file |
-| Automatic Transcription | Transcript generation from uploaded interview recordings |
-| Add to Calendar | Google Calendar, Outlook, Office 365 links and .ics file download |
-| Email Invitations | Send interview invitations with calendar links to candidates and panelists |
-| SSO Authentication | Single sign-on from EMP Cloud dashboard via JWT token exchange |
-| Offer Management | Generate offer letters, approval workflow, e-signature |
-| Onboarding Checklists | Pre-joining tasks, document collection, IT provisioning, welcome kit |
-| Referral Program | Employee referral tracking, bonus eligibility |
-| Recruitment Analytics | Time-to-hire, source effectiveness, pipeline conversion, offer acceptance rate |
-| Job Board Integration | Post to LinkedIn, Indeed, Naukri via API hooks |
-| Email Templates | Automated emails for each pipeline stage (Handlebars-based) |
+| Feature | Status | Description |
+|---------|--------|-------------|
+| Job Postings | Built | Create openings with title, description, requirements, department, location, salary range, employment type |
+| Career Page | Built | Public-facing careers page, customizable per organization |
+| Application Tracking (ATS) | Built | Kanban pipeline: Applied -> Screened -> Interview -> Offer -> Hired/Rejected |
+| Candidate Management | Built | Candidate profiles, resume upload/parsing, notes, tags |
+| Interview Scheduling | Built | Schedule interviews, assign interviewers, calendar integration |
+| Interview Feedback | Built | Structured scorecards, interviewer ratings, recommendation |
+| Video Conferencing | Built | Google Meet and Jitsi Meet integration with real working meeting links |
+| Interview Recording Upload | Built | Audio/video recording upload support up to 500MB per file |
+| Automatic Transcription | Built | Transcript generation from uploaded interview recordings |
+| Add to Calendar | Built | Google Calendar, Outlook, Office 365 links and .ics file download |
+| Email Invitations | Built | Send interview invitations with calendar links to candidates and panelists |
+| SSO Authentication | Built | Single sign-on from EMP Cloud dashboard via JWT token exchange |
+| Offer Management | Built | Generate offer letters, approval workflow, e-signature |
+| Onboarding Checklists | Built | Pre-joining tasks, document collection, IT provisioning, welcome kit |
+| Referral Program | Built | Employee referral tracking, bonus eligibility |
+| Recruitment Analytics | Built | Time-to-hire, source effectiveness, pipeline conversion, offer acceptance rate |
+| Job Board Integration | Built | Post to LinkedIn, Indeed, Naukri via API hooks |
+| Email Templates | Built | Automated emails for each pipeline stage (Handlebars-based) |
+| Candidate Portal | Built | Magic link authentication, application tracking, interview schedule view for candidates |
+| AI Resume Scoring | Built | Skill extraction, auto-scoring 0-100, batch scoring, candidate rankings |
+| Offer Letter PDF Generation | Built | Handlebars templates, PDF rendering, email offer letter to candidate |
+| Candidate Comparison | Built | Side-by-side view of 2-3 candidates with skill/experience/score comparison |
+| Custom Pipeline Stages | Built | Drag-and-drop stage reordering, per-org customization, color picker for stages |
+| API Documentation | Built | Swagger UI at /api/docs with OpenAPI 3.0 spec |
 
 ---
 
@@ -73,6 +80,8 @@ EMP Recruit is the recruitment and applicant tracking module of the EmpCloud eco
 | Cache / Queue | Redis 7, BullMQ |
 | Auth | OAuth2/OIDC via EMP Cloud (RS256 JWT verification), SSO token exchange |
 | File Uploads | Multer (local storage, S3-ready) |
+| PDF Generation | Puppeteer / Handlebars |
+| AI | Natural language processing for skill extraction and resume scoring |
 
 ---
 
@@ -103,22 +112,23 @@ emp-recruit/
           routes/               # Route handlers per domain
           validators/           # Request validators
         services/               # Business logic (thin controller pattern)
-        jobs/                   # BullMQ workers (email, resume parse, job board sync)
+        jobs/                   # BullMQ workers (email, resume parse, AI scoring, job board sync)
         utils/                  # Logger, errors, response helpers
+        swagger/                # OpenAPI spec & Swagger UI setup
     client/                     # @emp-recruit/client (port 5179)
       src/
         api/                    # API client & hooks
         components/
-          layout/               # DashboardLayout, PublicLayout
+          layout/               # DashboardLayout, PublicLayout, CandidatePortalLayout
           ui/                   # Radix-based UI primitives
-          recruit/              # KanbanBoard, FeedbackForm, etc.
+          recruit/              # KanbanBoard, FeedbackForm, CandidateComparison, etc.
         pages/                  # Route-based page components
         lib/                    # Auth store, utilities
 ```
 
 ---
 
-## Database Tables (20)
+## Database Tables (22+)
 
 | Table | Purpose |
 |-------|---------|
@@ -133,6 +143,7 @@ emp-recruit/
 | `interview_transcripts` | Generated transcripts from interview recordings |
 | `offers` | Offer details with salary, designation, approval status |
 | `offer_approvers` | Multi-step offer approval chain |
+| `offer_letters` | Generated offer letter PDFs with template reference |
 | `onboarding_templates` | Reusable onboarding task templates |
 | `onboarding_template_tasks` | Individual tasks within a template |
 | `onboarding_checklists` | Instantiated checklists for hired candidates |
@@ -142,6 +153,11 @@ emp-recruit/
 | `career_pages` | Per-org public career page configuration |
 | `job_board_postings` | External job board posting status tracking |
 | `recruitment_events` | Analytics event log for reporting |
+| `candidate_portal_tokens` | Magic link tokens for candidate portal authentication |
+| `resume_scores` | AI-generated resume scores with skill extraction data |
+| `pipeline_stage_configs` | Per-org custom pipeline stage definitions with ordering and colors |
+
+**5 migrations** across the database schema.
 
 ---
 
@@ -173,6 +189,7 @@ All endpoints under `/api/v1/`. Server runs on port **4500**.
 | GET | `/candidates/:id` | Get candidate profile |
 | PUT | `/candidates/:id` | Update candidate |
 | POST | `/candidates/:id/resume` | Upload/replace resume |
+| GET | `/candidates/compare` | Side-by-side comparison of 2-3 candidates |
 
 ### Applications (ATS)
 | Method | Path | Description |
@@ -210,6 +227,33 @@ All endpoints under `/api/v1/`. Server runs on port **4500**.
 | POST | `/offers/:id/submit-approval` | Submit for approval |
 | POST | `/offers/:id/approve` | Approve offer |
 | POST | `/offers/:id/send` | Send to candidate |
+| POST | `/offers/:id/generate-pdf` | Generate offer letter PDF from template |
+| POST | `/offers/:id/email-letter` | Email offer letter PDF to candidate |
+
+### AI Resume Scoring
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/ai/score-resume` | Score a single resume against job requirements (0-100) |
+| POST | `/ai/batch-score` | Batch score multiple resumes for a job posting |
+| GET | `/ai/rankings/:jobId` | Get ranked candidate list by AI score |
+| GET | `/ai/skills/:candidateId` | Get extracted skills for a candidate |
+
+### Custom Pipeline Stages
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/pipeline-stages` | Get org pipeline stage configuration |
+| PUT | `/pipeline-stages` | Update stage order, names, and colors |
+| POST | `/pipeline-stages` | Add custom stage |
+| DELETE | `/pipeline-stages/:id` | Remove custom stage |
+
+### Candidate Portal (Magic Link Auth)
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/portal/send-magic-link` | Send magic link email to candidate |
+| POST | `/portal/verify` | Verify magic link token |
+| GET | `/portal/my-applications` | Candidate views their applications |
+| GET | `/portal/my-interviews` | Candidate views scheduled interviews |
+| GET | `/portal/my-offers` | Candidate views offers |
 
 ### Onboarding
 | Method | Path | Description |
@@ -232,6 +276,7 @@ All endpoints under `/api/v1/`. Server runs on port **4500**.
 - **Career Page Admin**: Config and publish controls
 - **Analytics**: Overview, pipeline funnel, time-to-hire, source effectiveness
 - **Job Board Integration**: Post/remove jobs on external boards
+- **API Docs**: Swagger UI at `/api/docs`
 
 ---
 
@@ -249,7 +294,7 @@ This allows seamless navigation between EMP Cloud and Recruit without requiring 
 
 ---
 
-## Frontend Pages
+## Frontend Pages (25+)
 
 ### Admin Pages (Authenticated)
 | Route | Page | Description |
@@ -257,14 +302,17 @@ This allows seamless navigation between EMP Cloud and Recruit without requiring 
 | `/` | Dashboard | Overview stats, open positions, pipeline summary |
 | `/jobs` | Job List | Job postings with status/department filters |
 | `/jobs/new` | Job Form | Create/edit job posting |
-| `/jobs/:id` | Job Detail | Applications kanban board |
+| `/jobs/:id` | Job Detail | Applications kanban board with custom pipeline stages |
 | `/candidates` | Candidate List | Searchable candidate database |
-| `/candidates/:id` | Candidate Detail | Full profile, application history |
+| `/candidates/:id` | Candidate Detail | Full profile, application history, AI score |
+| `/candidates/compare` | Candidate Comparison | Side-by-side view of 2-3 candidates |
 | `/interviews` | Interview List | Calendar view of interviews |
 | `/offers` | Offer List | Offers with status filter |
 | `/onboarding` | Onboarding List | Active onboarding checklists |
 | `/referrals` | Referral List | Referral tracking |
 | `/analytics` | Analytics | Charts: time-to-hire, funnel, sources |
+| `/ai-scoring` | AI Resume Scoring | Batch scoring dashboard, candidate rankings |
+| `/pipeline-config` | Pipeline Configuration | Drag-and-drop stage editor with color picker |
 | `/settings` | Settings | Career page, email templates, integrations |
 
 ### Public Pages (No Auth)
@@ -273,6 +321,16 @@ This allows seamless navigation between EMP Cloud and Recruit without requiring 
 | `/careers/:slug` | Career Page | Public career page with org branding |
 | `/careers/:slug/jobs/:jobId` | Job View | Public job detail |
 | `/careers/:slug/apply/:jobId` | Application Form | Resume upload and apply |
+
+### Candidate Portal Pages (Magic Link Auth)
+| Route | Page | Description |
+|-------|------|-------------|
+| `/portal/login` | Portal Login | Magic link request form |
+| `/portal/verify` | Magic Link Verify | Token verification landing |
+| `/portal/dashboard` | Portal Dashboard | Candidate's application overview |
+| `/portal/applications` | My Applications | Application status tracking with stage timeline |
+| `/portal/interviews` | My Interviews | Upcoming interview schedule and details |
+| `/portal/offers` | My Offers | View and respond to offers |
 
 ---
 
@@ -315,6 +373,11 @@ pnpm --filter @emp-recruit/client dev    # Client on :5179
 # Run migrations
 pnpm --filter @emp-recruit/server migrate
 ```
+
+Once running, visit:
+- **Client**: http://localhost:5179
+- **API**: http://localhost:4500
+- **API Documentation**: http://localhost:4500/api/docs
 
 ---
 
