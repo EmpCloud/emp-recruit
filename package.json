@@ -1,0 +1,36 @@
+{
+  "name": "emp-recruit",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Open-source recruitment & applicant tracking system — part of the EmpCloud HRMS ecosystem",
+  "license": "GPL-3.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/EmpCloud/emp-recruit.git"
+  },
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently \"pnpm run dev:server\" \"pnpm run dev:client\"",
+    "dev:server": "pnpm --filter @emp-recruit/server dev",
+    "dev:client": "pnpm --filter @emp-recruit/client dev",
+    "build": "pnpm -r run build",
+    "build:server": "pnpm --filter @emp-recruit/server build",
+    "build:client": "pnpm --filter @emp-recruit/client build",
+    "test": "pnpm -r run test",
+    "test:server": "pnpm --filter @emp-recruit/server test",
+    "lint": "pnpm -r run lint",
+    "db:migrate": "pnpm --filter @emp-recruit/server db:migrate",
+    "db:seed": "pnpm --filter @emp-recruit/server db:seed",
+    "clean": "rm -rf node_modules packages/*/node_modules packages/*/dist"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.58.2",
+    "concurrently": "^9.1.0"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  }
+}

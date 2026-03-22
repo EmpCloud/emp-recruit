@@ -1,0 +1,324 @@
+import { useState, useEffect } from "react";
+import { useNavigate, useParams } from "react-router-dom";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { ArrowLeft, Save, Loader2 } from "lucide-react";
+import { apiGet, apiPost, apiPut } from "@/api/client";
+import type { JobPosting } from "@emp-recruit/shared";
+import toast from "react-hot-toast";
+
+const EMPLOYMENT_TYPES = [
+  { value: "full_time", label: "Full Time" },
+  { value: "part_time", label: "Part Time" },
+  { value: "contract", label: "Contract" },
+  { value: "internship", label: "Internship" },
+  { value: "freelance", label: "Freelance" },
+];
+
+const REMOTE_POLICIES = [
+  { value: "onsite", label: "On-site" },
+  { value: "remote", label: "Remote" },
+  { value: "hybrid", label: "Hybrid" },
+];
+
+interface FormData {
+  title: string;
+  description: string;
+  department: string;
+  location: string;
+  employment_type: string;
+  experience_min: string;
+  experience_max: string;
+  salary_min: string;
+  salary_max: string;
+  salary_currency: string;
+  remote_policy: string;
+  requirements: string;
+  benefits: string;
+  skills: string;
+  closes_at: string;
+}
+
+const INITIAL: FormData = {
+  title: "",
+  description: "",
+  department: "",
+  location: "",
+  employment_type: "full_time",
+  experience_min: "",
+  experience_max: "",
+  salary_min: "",
+  salary_max: "",
+  salary_currency: "INR",
+  remote_policy: "onsite",
+  requirements: "",
+  benefits: "",
+  skills: "",
+  closes_at: "",
+};
+
+export function JobFormPage() {
+  const { id } = useParams<{ id?: string }>();
+  const isEdit = Boolean(id);
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [form, setForm] = useState<FormData>(INITIAL);
+
+  const { data: existingJob, isLoading: loadingJob } = useQuery({
+    queryKey: ["job", id],
+    queryFn: () => apiGet<JobPosting>(`/jobs/${id}`),
+    enabled: isEdit,
+  });
+
+  useEffect(() => {
+    if (existingJob?.data) {
+      const j = existingJob.data;
+      setForm({
+        title: j.title,
+        description: j.description,
+        department: j.department ?? "",
+        location: j.location ?? "",
+        employment_type: j.employment_type,
+        experience_min: j.experience_min?.toString() ?? "",
+        experience_max: j.experience_max?.toString() ?? "",
+        salary_min: j.salary_min?.toString() ?? "",
+        salary_max: j.salary_max?.toString() ?? "",
+        salary_currency: j.salary_currency,
+        remote_policy: "onsite", // default, can be extended
+        requirements: j.requirements ?? "",
+        benefits: j.benefits ?? "",
+        skills: j.skills ? JSON.parse(j.skills).join(", ") : "",
+        closes_at: j.closes_at ? j.closes_at.slice(0, 10) : "",
+      });
+    }
+  }, [existingJob]);
+
+  const createMutation = useMutation({
+    mutationFn: (data: Record<string, any>) => apiPost<JobPosting>("/jobs", data),
+    onSuccess: (res) => {
+      toast.success("Job created successfully");
+      queryClient.invalidateQueries({ queryKey: ["jobs"] });
+      navigate(`/jobs/${res.data?.id}`);
+    },
+    onError: () => toast.error("Failed to create job"),
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: (data: Record<string, any>) => apiPut<JobPosting>(`/jobs/${id}`, data),
+    onSuccess: () => {
+      toast.success("Job updated successfully");
+      queryClient.invalidateQueries({ queryKey: ["jobs"] });
+      queryClient.invalidateQueries({ queryKey: ["job", id] });
+      navigate(`/jobs/${id}`);
+    },
+    onError: () => toast.error("Failed to update job"),
+  });
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+
+    const payload: Record<string, any> = {
+      title: form.title,
+      description: form.description,
+      employment_type: form.employment_type,
+      salary_currency: form.salary_currency,
+    };
+
+    if (form.department) payload.department = form.department;
+    if (form.location) payload.location = form.location;
+    if (form.experience_min) payload.experience_min = Number(form.experience_min);
+    if (form.experience_max) payload.experience_max = Number(form.experience_max);
+    if (form.salary_min) payload.salary_min = Number(form.salary_min);
+    if (form.salary_max) payload.salary_max = Number(form.salary_max);
+    if (form.requirements) payload.requirements = form.requirements;
+    if (form.benefits) payload.benefits = form.benefits;
+    if (form.skills) payload.skills = form.skills.split(",").map((s: string) => s.trim()).filter(Boolean);
+    if (form.closes_at) payload.closes_at = new Date(form.closes_at).toISOString();
+
+    if (isEdit) {
+      updateMutation.mutate(payload);
+    } else {
+      createMutation.mutate(payload);
+    }
+  }
+
+  const saving = createMutation.isPending || updateMutation.isPending;
+
+  function field(label: string, name: keyof FormData, type = "text", opts?: { required?: boolean; placeholder?: string }) {
+    return (
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">
+          {label} {opts?.required && <span className="text-red-500">*</span>}
+        </label>
+        <input
+          type={type}
+          value={form[name]}
+          onChange={(e) => setForm((p) => ({ ...p, [name]: e.target.value }))}
+          placeholder={opts?.placeholder}
+          required={opts?.required}
+          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm placeholder:text-gray-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+        />
+      </div>
+    );
+  }
+
+  if (isEdit && loadingJob) {
+    return (
+      <div className="flex justify-center py-12">
+        <Loader2 className="h-8 w-8 animate-spin text-brand-600" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="mx-auto max-w-3xl space-y-6">
+      {/* Header */}
+      <div className="flex items-center gap-4">
+        <button
+          onClick={() => navigate(-1)}
+          className="rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+        >
+          <ArrowLeft className="h-5 w-5" />
+        </button>
+        <h1 className="text-2xl font-bold text-gray-900">
+          {isEdit ? "Edit Job Posting" : "Create Job Posting"}
+        </h1>
+      </div>
+
+      <form onSubmit={handleSubmit} className="space-y-8">
+        {/* Basic Info */}
+        <div className="rounded-lg border border-gray-200 bg-white p-6 space-y-4">
+          <h2 className="text-lg font-semibold text-gray-900">Basic Information</h2>
+
+          {field("Job Title", "title", "text", { required: true, placeholder: "e.g. Senior Software Engineer" })}
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Description <span className="text-red-500">*</span>
+            </label>
+            <textarea
+              value={form.description}
+              onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))}
+              rows={6}
+              required
+              placeholder="Describe the role, responsibilities, and what success looks like..."
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm placeholder:text-gray-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+            />
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {field("Department", "department", "text", { placeholder: "e.g. Engineering" })}
+            {field("Location", "location", "text", { placeholder: "e.g. Bengaluru, India" })}
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Employment Type</label>
+              <select
+                value={form.employment_type}
+                onChange={(e) => setForm((p) => ({ ...p, employment_type: e.target.value }))}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+              >
+                {EMPLOYMENT_TYPES.map((t) => (
+                  <option key={t.value} value={t.value}>
+                    {t.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Remote Policy</label>
+              <select
+                value={form.remote_policy}
+                onChange={(e) => setForm((p) => ({ ...p, remote_policy: e.target.value }))}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+              >
+                {REMOTE_POLICIES.map((r) => (
+                  <option key={r.value} value={r.value}>
+                    {r.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </div>
+
+        {/* Experience & Salary */}
+        <div className="rounded-lg border border-gray-200 bg-white p-6 space-y-4">
+          <h2 className="text-lg font-semibold text-gray-900">Experience & Compensation</h2>
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {field("Min Experience (years)", "experience_min", "number", { placeholder: "0" })}
+            {field("Max Experience (years)", "experience_max", "number", { placeholder: "10" })}
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            {field("Min Salary", "salary_min", "number", { placeholder: "e.g. 800000" })}
+            {field("Max Salary", "salary_max", "number", { placeholder: "e.g. 1500000" })}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Currency</label>
+              <select
+                value={form.salary_currency}
+                onChange={(e) => setForm((p) => ({ ...p, salary_currency: e.target.value }))}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+              >
+                <option value="INR">INR</option>
+                <option value="USD">USD</option>
+                <option value="EUR">EUR</option>
+                <option value="GBP">GBP</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        {/* Requirements & Details */}
+        <div className="rounded-lg border border-gray-200 bg-white p-6 space-y-4">
+          <h2 className="text-lg font-semibold text-gray-900">Requirements & Details</h2>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Requirements</label>
+            <textarea
+              value={form.requirements}
+              onChange={(e) => setForm((p) => ({ ...p, requirements: e.target.value }))}
+              rows={4}
+              placeholder="List the key requirements for this role..."
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm placeholder:text-gray-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Benefits</label>
+            <textarea
+              value={form.benefits}
+              onChange={(e) => setForm((p) => ({ ...p, benefits: e.target.value }))}
+              rows={3}
+              placeholder="List benefits and perks..."
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm placeholder:text-gray-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+            />
+          </div>
+
+          {field("Skills (comma separated)", "skills", "text", { placeholder: "React, TypeScript, Node.js" })}
+          {field("Application Deadline", "closes_at", "date")}
+        </div>
+
+        {/* Actions */}
+        <div className="flex justify-end gap-3">
+          <button
+            type="button"
+            onClick={() => navigate(-1)}
+            className="rounded-lg border border-gray-300 px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={saving}
+            className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50"
+          >
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+            {isEdit ? "Update Job" : "Create Job"}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}

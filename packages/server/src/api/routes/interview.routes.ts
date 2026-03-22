@@ -1,0 +1,401 @@
+// ============================================================================
+// INTERVIEW ROUTES
+// All interview scheduling, panelist management, and feedback endpoints.
+// ============================================================================
+
+import { Router, Request, Response, NextFunction } from "express";
+import { authenticate, authorize } from "../middleware/auth.middleware";
+import { recordingUpload } from "../middleware/upload.middleware";
+import { sendSuccess, sendPaginated } from "../../utils/response";
+import { ValidationError } from "../../utils/errors";
+import * as interviewService from "../../services/interview/interview.service";
+import * as recordingService from "../../services/interview/recording.service";
+import type { InterviewStatus } from "@emp-recruit/shared";
+
+const router = Router();
+
+// All routes require authentication
+router.use(authenticate);
+
+// ---------------------------------------------------------------------------
+// GET / — List interviews (any authenticated user)
+// ---------------------------------------------------------------------------
+router.get("/", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const orgId = req.user!.empcloudOrgId;
+    const { page, limit, application_id, status, sort_field, sort_order } = req.query;
+
+    const result = await interviewService.listInterviews(orgId, {
+      page: page ? Number(page) : undefined,
+      limit: limit ? Number(limit) : undefined,
+      application_id: application_id as string | undefined,
+      status: status as InterviewStatus | undefined,
+      sort_field: sort_field as string | undefined,
+      sort_order: sort_order as "asc" | "desc" | undefined,
+    });
+
+    return sendPaginated(res, result.data, result.total, result.page, result.perPage);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// POST / — Schedule a new interview (hr_admin, hr_manager only)
+// ---------------------------------------------------------------------------
+router.post(
+  "/",
+  authorize("org_admin", "hr_admin", "hr_manager"),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const orgId = req.user!.empcloudOrgId;
+      const { application_id, type, round, title, scheduled_at, duration_minutes, location, meeting_link, notes, panelists } = req.body;
+
+      if (!application_id || !type || !round || !title || !scheduled_at || !duration_minutes) {
+        throw new ValidationError("Missing required fields: application_id, type, round, title, scheduled_at, duration_minutes");
+      }
+
+      const interview = await interviewService.scheduleInterview(orgId, {
+        application_id,
+        type,
+        round,
+        title,
+        scheduled_at,
+        duration_minutes,
+        location,
+        meeting_link,
+        notes,
+        created_by: req.user!.empcloudUserId,
+        panelists,
+      });
+
+      return sendSuccess(res, interview, 201);
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// ---------------------------------------------------------------------------
+// GET /:id — Get interview detail with panelists + feedback
+// ---------------------------------------------------------------------------
+router.get("/:id", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const orgId = req.user!.empcloudOrgId;
+    const interview = await interviewService.getInterview(orgId, String(req.params.id));
+    return sendSuccess(res, interview);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// GET /:id/calendar-links — Get calendar URLs (Google, Outlook, Office 365)
+// ---------------------------------------------------------------------------
+router.get("/:id/calendar-links", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const orgId = req.user!.empcloudOrgId;
+    const links = await interviewService.getCalendarLinks(orgId, String(req.params.id));
+    return sendSuccess(res, links);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// GET /:id/calendar.ics — Download ICS file for the interview
+// ---------------------------------------------------------------------------
+router.get("/:id/calendar.ics", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const orgId = req.user!.empcloudOrgId;
+    const icsContent = await interviewService.generateICSFile(orgId, String(req.params.id));
+    res.setHeader("Content-Type", "text/calendar; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="interview-${req.params.id}.ics"`);
+    return res.send(icsContent);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// PUT /:id — Update / reschedule interview
+// ---------------------------------------------------------------------------
+router.put("/:id", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const orgId = req.user!.empcloudOrgId;
+    const { type, round, title, scheduled_at, duration_minutes, location, meeting_link, notes } = req.body;
+
+    const interview = await interviewService.updateInterview(orgId, String(req.params.id), {
+      type,
+      round,
+      title,
+      scheduled_at,
+      duration_minutes,
+      location,
+      meeting_link,
+      notes,
+    });
+
+    return sendSuccess(res, interview);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// PATCH /:id/status — Change interview status
+// ---------------------------------------------------------------------------
+router.patch("/:id/status", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const orgId = req.user!.empcloudOrgId;
+    const { status } = req.body;
+
+    if (!status) {
+      throw new ValidationError("Missing required field: status");
+    }
+
+    const interview = await interviewService.changeStatus(orgId, String(req.params.id), status);
+    return sendSuccess(res, interview);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// POST /:id/panelists — Add a panelist
+// ---------------------------------------------------------------------------
+router.post(
+  "/:id/panelists",
+  authorize("org_admin", "hr_admin", "hr_manager"),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const orgId = req.user!.empcloudOrgId;
+      const { user_id, role } = req.body;
+
+      if (!user_id || !role) {
+        throw new ValidationError("Missing required fields: user_id, role");
+      }
+
+      const panelist = await interviewService.addPanelist(orgId, String(req.params.id), user_id, role);
+      return sendSuccess(res, panelist, 201);
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// ---------------------------------------------------------------------------
+// DELETE /:id/panelists/:userId — Remove a panelist
+// ---------------------------------------------------------------------------
+router.delete(
+  "/:id/panelists/:userId",
+  authorize("org_admin", "hr_admin", "hr_manager"),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const orgId = req.user!.empcloudOrgId;
+      await interviewService.removePanelist(orgId, String(req.params.id), Number(String(req.params.userId)));
+      return sendSuccess(res, { message: "Panelist removed" });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// ---------------------------------------------------------------------------
+// POST /:id/feedback — Submit feedback (any panelist)
+// ---------------------------------------------------------------------------
+router.post("/:id/feedback", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const orgId = req.user!.empcloudOrgId;
+    const userId = req.user!.empcloudUserId;
+    const { recommendation, technical_score, communication_score, cultural_fit_score, overall_score, strengths, weaknesses, notes } = req.body;
+
+    if (!recommendation) {
+      throw new ValidationError("Missing required field: recommendation");
+    }
+
+    const feedback = await interviewService.submitFeedback(orgId, String(req.params.id), userId, {
+      recommendation,
+      technical_score,
+      communication_score,
+      cultural_fit_score,
+      overall_score,
+      strengths,
+      weaknesses,
+      notes,
+    });
+
+    return sendSuccess(res, feedback, 201);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// GET /:id/feedback — Get all feedback for an interview
+// ---------------------------------------------------------------------------
+router.get("/:id/feedback", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const orgId = req.user!.empcloudOrgId;
+    const feedback = await interviewService.getFeedback(orgId, String(req.params.id));
+    return sendSuccess(res, feedback);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// POST /:id/generate-meet — Generate Google Meet link
+// ---------------------------------------------------------------------------
+router.post(
+  "/:id/generate-meet",
+  authorize("org_admin", "hr_admin", "hr_manager"),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const orgId = req.user!.empcloudOrgId;
+      const meetingLink = await interviewService.generateMeetingLink(orgId, String(req.params.id));
+      return sendSuccess(res, { meeting_link: meetingLink });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// ---------------------------------------------------------------------------
+// POST /:id/send-invitation — Send email invitation to candidate + panelists
+// ---------------------------------------------------------------------------
+router.post(
+  "/:id/send-invitation",
+  authorize("org_admin", "hr_admin", "hr_manager"),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const orgId = req.user!.empcloudOrgId;
+      const result = await interviewService.sendInterviewInvitation(orgId, String(req.params.id));
+      return sendSuccess(res, result);
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// ---------------------------------------------------------------------------
+// POST /:id/recordings — Upload recording (multipart)
+// ---------------------------------------------------------------------------
+router.post(
+  "/:id/recordings",
+  authorize("org_admin", "hr_admin", "hr_manager"),
+  recordingUpload.single("recording"),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const orgId = req.user!.empcloudOrgId;
+      const userId = req.user!.empcloudUserId;
+
+      if (!req.file) {
+        throw new ValidationError("No recording file provided");
+      }
+
+      const recording = await recordingService.uploadRecording(
+        orgId,
+        String(req.params.id),
+        req.file,
+        userId,
+      );
+      return sendSuccess(res, recording, 201);
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// ---------------------------------------------------------------------------
+// GET /:id/recordings — List recordings for an interview
+// ---------------------------------------------------------------------------
+router.get("/:id/recordings", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const orgId = req.user!.empcloudOrgId;
+    const recordings = await recordingService.getRecordings(orgId, String(req.params.id));
+    return sendSuccess(res, recordings);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// DELETE /:id/recordings/:recId — Delete a recording
+// ---------------------------------------------------------------------------
+router.delete(
+  "/:id/recordings/:recId",
+  authorize("org_admin", "hr_admin", "hr_manager"),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const orgId = req.user!.empcloudOrgId;
+      await recordingService.deleteRecording(orgId, String(req.params.recId));
+      return sendSuccess(res, { message: "Recording deleted" });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// ---------------------------------------------------------------------------
+// POST /:id/recordings/:recId/transcribe — Generate transcript from recording
+// ---------------------------------------------------------------------------
+router.post(
+  "/:id/recordings/:recId/transcribe",
+  authorize("org_admin", "hr_admin", "hr_manager"),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const orgId = req.user!.empcloudOrgId;
+      const transcript = await recordingService.generateTranscript(
+        orgId,
+        String(req.params.id),
+        String(req.params.recId),
+      );
+      return sendSuccess(res, transcript, 201);
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// ---------------------------------------------------------------------------
+// GET /:id/transcript — Get transcript for an interview
+// ---------------------------------------------------------------------------
+router.get("/:id/transcript", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const orgId = req.user!.empcloudOrgId;
+    const transcript = await recordingService.getTranscript(orgId, String(req.params.id));
+    return sendSuccess(res, transcript);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// PUT /:id/transcript/:tId — Update transcript summary
+// ---------------------------------------------------------------------------
+router.put(
+  "/:id/transcript/:tId",
+  authorize("org_admin", "hr_admin", "hr_manager"),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const orgId = req.user!.empcloudOrgId;
+      const { summary } = req.body;
+
+      if (summary === undefined) {
+        throw new ValidationError("Missing required field: summary");
+      }
+
+      const transcript = await recordingService.updateTranscriptSummary(
+        orgId,
+        String(req.params.tId),
+        summary,
+      );
+      return sendSuccess(res, transcript);
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+export { router as interviewRoutes };

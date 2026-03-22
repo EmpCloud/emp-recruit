@@ -1,0 +1,148 @@
+// ============================================================================
+// EMP-RECRUIT SERVER ENTRY POINT
+// ============================================================================
+
+import express from "express";
+import cors from "cors";
+import helmet from "helmet";
+import morgan from "morgan";
+import compression from "compression";
+import path from "path";
+import { config } from "./config";
+import { initDB, closeDB } from "./db/adapters";
+import { initEmpCloudDB, migrateEmpCloudDB, closeEmpCloudDB } from "./db/empcloud";
+import { logger } from "./utils/logger";
+
+// Route imports
+import { healthRoutes } from "./api/routes/health.routes";
+import { jobRoutes } from "./api/routes/job.routes";
+import { candidateRoutes } from "./api/routes/candidate.routes";
+import { applicationRoutes } from "./api/routes/application.routes";
+import { offerRoutes } from "./api/routes/offer.routes";
+import { onboardingRoutes } from "./api/routes/onboarding.routes";
+import { interviewRoutes } from "./api/routes/interview.routes";
+import { authRoutes } from "./api/routes/auth.routes";
+import { publicRoutes } from "./api/routes/public.routes";
+import { careerPageRoutes } from "./api/routes/career-page.routes";
+import { referralRoutes } from "./api/routes/referral.routes";
+import { analyticsRoutes } from "./api/routes/analytics.routes";
+import { emailTemplateRoutes } from "./api/routes/email-template.routes";
+import { errorHandler } from "./api/middleware/error.middleware";
+import { apiLimiter, authLimiter } from "./api/middleware/rate-limit.middleware";
+
+const app = express();
+
+// ---------------------------------------------------------------------------
+// Middleware
+// ---------------------------------------------------------------------------
+app.use(helmet());
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true);
+      if (config.cors.origin === "*") return callback(null, true);
+      if (
+        config.env === "development" &&
+        (origin.startsWith("http://localhost") ||
+          origin.startsWith("http://127.0.0.1") ||
+          origin.endsWith(".ngrok-free.dev"))
+      ) {
+        return callback(null, true);
+      }
+      const allowed = config.cors.origin.split(",").map((s) => s.trim());
+      if (allowed.includes(origin)) return callback(null, true);
+      callback(new Error("Not allowed by CORS"));
+    },
+    credentials: true,
+  }),
+);
+app.use(compression());
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true }));
+app.use(morgan("combined", { stream: { write: (msg) => logger.info(msg.trim()) } }));
+
+// ---------------------------------------------------------------------------
+// Health check
+// ---------------------------------------------------------------------------
+app.use("/health", healthRoutes);
+
+// ---------------------------------------------------------------------------
+// API Routes (v1)
+// ---------------------------------------------------------------------------
+const v1 = express.Router();
+v1.use(apiLimiter);
+
+// Active routes
+v1.use("/jobs", jobRoutes);
+v1.use("/candidates", candidateRoutes);
+v1.use("/applications", applicationRoutes);
+v1.use("/offers", offerRoutes);
+v1.use("/onboarding", onboardingRoutes);
+
+v1.use("/interviews", interviewRoutes);
+
+v1.use("/auth", authLimiter, authRoutes);
+v1.use("/referrals", referralRoutes);
+v1.use("/email-templates", emailTemplateRoutes);
+v1.use("/career-pages", careerPageRoutes);
+v1.use("/analytics", analyticsRoutes);
+
+// Public routes (no auth required) — career pages, job listings, applications
+app.use("/api/v1/public", publicRoutes);
+
+app.use("/api/v1", v1);
+
+// Static file serving for uploads
+app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
+
+// ---------------------------------------------------------------------------
+// Error handling
+// ---------------------------------------------------------------------------
+app.use(errorHandler);
+
+// ---------------------------------------------------------------------------
+// Startup
+// ---------------------------------------------------------------------------
+async function start() {
+  try {
+    // Validate configuration
+    const { validateConfig } = await import("./config/validate");
+    validateConfig();
+
+    // Initialize EmpCloud master database (users, orgs, auth)
+    await initEmpCloudDB();
+    await migrateEmpCloudDB();
+
+    // Initialize recruit module database
+    const db = await initDB();
+    logger.info("Recruit database connected");
+
+    // Run migrations
+    await db.migrate();
+    logger.info("Recruit database migrations applied");
+
+    // Start server
+    app.listen(config.port, config.host, () => {
+      logger.info(`emp-recruit server running at http://${config.host}:${config.port}`);
+      logger.info(`   Environment: ${config.env}`);
+    });
+  } catch (error) {
+    logger.error("Failed to start server:", error);
+    process.exit(1);
+  }
+}
+
+// Graceful shutdown
+const shutdown = async () => {
+  logger.info("Shutting down...");
+  await closeDB();
+  await closeEmpCloudDB();
+  process.exit(0);
+};
+
+process.on("SIGTERM", shutdown);
+process.on("SIGINT", shutdown);
+
+start();
+
+export { app };
