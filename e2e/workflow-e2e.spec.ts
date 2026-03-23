@@ -699,15 +699,14 @@ async function workflow6(applicationId: string) {
   // ---- Step 1: Score application ----
   let r = await api("POST", `/scoring/applications/${applicationId}/score`);
   const scored = r.status === 200 && r.data?.data;
-  // 500 is acceptable here when candidate has no resume (scoring parses resume file)
   log(
     "W6.1",
     `POST /scoring/applications/${applicationId}/score`,
     r.status,
-    scored || r.status === 200 || r.status === 404 || r.status === 400 || r.status === 500,
+    r.status === 200,
     r.status === 200
-      ? `score=${r.data?.data?.overall_score || r.data?.data?.overallScore}`
-      : `info=${r.data?.error?.message?.substring(0, 80) || "no resume — scoring requires resume file on disk"}`,
+      ? `score=${r.data?.data?.overall_score || r.data?.data?.overallScore}, rec=${r.data?.data?.recommendation}`
+      : `error=${r.data?.error?.message?.substring(0, 100)}`,
   );
 
   // ---- Step 2: Get score report ----

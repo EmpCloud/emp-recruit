@@ -3,6 +3,7 @@ import { authenticate, authorize } from "../middleware/auth.middleware";
 import { sendSuccess } from "../../utils/response";
 import { NotFoundError, ValidationError } from "../../utils/errors";
 import { idParamSchema } from "@emp-recruit/shared";
+import { getDB } from "../../db/adapters";
 import * as scoringService from "../../services/scoring/resume-scoring.service";
 
 const router = Router();
@@ -21,7 +22,6 @@ router.post(
       const orgId = req.user!.empcloudOrgId;
 
       // Get the application to find candidate_id and job_id
-      const { getDB } = await import("../../db/adapters");
       const db = getDB();
       const app = await db.findOne<any>("applications", {
         id: appId,
