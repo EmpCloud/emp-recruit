@@ -279,7 +279,7 @@ export async function scoreCandidate(
       matched_skills: JSON.stringify(matchedSkills),
       missing_skills: JSON.stringify(missingSkills),
       recommendation,
-      scored_at: new Date().toISOString(),
+      scored_at: new Date(),
     } as any);
   } else {
     await db.create<CandidateScore>("candidate_scores", {
@@ -294,7 +294,7 @@ export async function scoreCandidate(
       matched_skills: JSON.stringify(matchedSkills),
       missing_skills: JSON.stringify(missingSkills),
       recommendation,
-      scored_at: new Date().toISOString(),
+      scored_at: new Date(),
     } as any);
   }
 
