@@ -330,6 +330,25 @@ export async function acceptOffer(orgId: number, id: string, notes?: string): Pr
   // Move application to hired stage
   await db.update("applications", offer.application_id, { stage: "hired" });
 
+  // Notify EMP Cloud about the hire (non-blocking)
+  const webhookUrl = process.env.EMPCLOUD_WEBHOOK_URL;
+  if (webhookUrl) {
+    fetch(webhookUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        event: "recruit.candidate_hired",
+        data: {
+          candidateId: offer.candidate_id,
+          jobTitle: offer.job_title,
+          joiningDate: offer.joining_date,
+        },
+        source: "emp-recruit",
+        timestamp: new Date().toISOString(),
+      }),
+    }).catch(() => {}); // fire-and-forget
+  }
+
   return updated;
 }
 
