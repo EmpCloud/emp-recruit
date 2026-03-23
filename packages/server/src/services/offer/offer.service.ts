@@ -13,8 +13,8 @@ import type { Offer, OfferApprover, OfferStatus } from "@emp-recruit/shared";
 
 interface CreateOfferData {
   application_id: string;
-  candidate_id: string;
-  job_id: string;
+  candidate_id?: string;
+  job_id?: string;
   salary_amount: number;
   salary_currency: string;
   joining_date: string;
@@ -59,6 +59,10 @@ export async function createOffer(orgId: number, data: CreateOfferData): Promise
     throw new NotFoundError("Application", data.application_id);
   }
 
+  // Auto-derive candidate_id and job_id from application if not provided
+  const candidateId = data.candidate_id || application.candidate_id;
+  const jobId = data.job_id || application.job_id;
+
   // Check no active offer exists for this application
   const existingOffer = await db.findOne<Offer>("offers", {
     application_id: data.application_id,
@@ -71,8 +75,8 @@ export async function createOffer(orgId: number, data: CreateOfferData): Promise
   const offer = await db.create<Offer>("offers", {
     organization_id: orgId,
     application_id: data.application_id,
-    candidate_id: data.candidate_id,
-    job_id: data.job_id,
+    candidate_id: candidateId,
+    job_id: jobId,
     status: "draft" as OfferStatus,
     salary_amount: data.salary_amount,
     salary_currency: data.salary_currency,

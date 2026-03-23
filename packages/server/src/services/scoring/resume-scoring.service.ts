@@ -212,8 +212,9 @@ export async function scoreCandidate(
   if (!application) throw new NotFoundError("Application", applicationId);
 
   // Gather candidate skills from profile + resume
+  // Handle both string (raw JSON) and already-parsed array from MySQL JSON column
   const candidateSkills: string[] = candidate.skills
-    ? JSON.parse(candidate.skills)
+    ? (typeof candidate.skills === "string" ? JSON.parse(candidate.skills) : candidate.skills)
     : [];
 
   // If candidate has a resume, extract skills from it too
@@ -236,8 +237,10 @@ export async function scoreCandidate(
     ]),
   ];
 
-  // Parse job required skills
-  const jobSkills: string[] = job.skills ? JSON.parse(job.skills) : [];
+  // Parse job required skills (handle both string and already-parsed array)
+  const jobSkills: string[] = job.skills
+    ? (typeof job.skills === "string" ? JSON.parse(job.skills) : job.skills)
+    : [];
   const jobSkillsLower = jobSkills.map((s) => s.toLowerCase());
 
   // Calculate skills score
