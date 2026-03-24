@@ -407,3 +407,131 @@ export interface CandidateScore {
   created_at: string;
   updated_at: string;
 }
+
+// ---------------------------------------------------------------------------
+// Background Check Enums & Interfaces
+// ---------------------------------------------------------------------------
+
+export type BackgroundCheckProvider = "checkr" | "sterling" | "hireright" | "manual";
+export type BackgroundCheckType = "criminal" | "employment" | "education" | "credit" | "reference" | "identity";
+export type BackgroundCheckStatus = "pending" | "in_progress" | "completed" | "failed" | "cancelled";
+export type BackgroundCheckResult = "clear" | "consider" | "adverse" | "pending";
+
+export interface BackgroundCheck {
+  id: string;
+  organization_id: number;
+  candidate_id: string;
+  provider: BackgroundCheckProvider;
+  check_type: BackgroundCheckType;
+  status: BackgroundCheckStatus;
+  request_id: string | null;
+  result: BackgroundCheckResult | null;
+  result_details: string | null; // JSON
+  initiated_by: number;
+  requested_at: string;
+  completed_at: string | null;
+  report_url: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BackgroundCheckPackage {
+  id: string;
+  organization_id: number;
+  name: string;
+  description: string | null;
+  checks_included: string; // JSON array of BackgroundCheckType
+  provider: BackgroundCheckProvider;
+  estimated_days: number | null;
+  cost: number | null;
+  is_default: boolean;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+// ---------------------------------------------------------------------------
+// Candidate Survey / NPS Enums & Interfaces
+// ---------------------------------------------------------------------------
+
+export type SurveyType = "post_interview" | "post_offer" | "post_rejection";
+export type SurveyStatus = "sent" | "completed" | "expired";
+
+export interface CandidateSurvey {
+  id: string;
+  organization_id: number;
+  candidate_id: string;
+  application_id: string;
+  survey_type: SurveyType;
+  status: SurveyStatus;
+  sent_at: string;
+  completed_at: string | null;
+  token: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CandidateSurveyResponse {
+  id: string;
+  survey_id: string;
+  organization_id: number;
+  question_key: string;
+  rating: number | null;
+  text_response: string | null;
+  created_at: string;
+}
+
+// ---------------------------------------------------------------------------
+// Psychometric Assessment Enums & Interfaces
+// ---------------------------------------------------------------------------
+
+export type AssessmentType = "behavioral" | "cognitive" | "personality" | "situational";
+export type AssessmentStatus = "invited" | "started" | "completed" | "expired";
+
+export interface AssessmentQuestion {
+  question: string;
+  options: string[];
+  type: "multiple_choice" | "true_false" | "text" | "scale";
+  correct_answer?: string | null;
+}
+
+export interface AssessmentTemplate {
+  id: string;
+  organization_id: number;
+  name: string;
+  description: string | null;
+  assessment_type: AssessmentType;
+  time_limit_minutes: number | null;
+  questions: string | AssessmentQuestion[]; // JSON array
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CandidateAssessment {
+  id: string;
+  organization_id: number;
+  candidate_id: string;
+  template_id: string;
+  status: AssessmentStatus;
+  token: string;
+  started_at: string | null;
+  completed_at: string | null;
+  score: number | null;
+  max_score: number | null;
+  percentile: number | null;
+  result_summary: string | null; // JSON
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AssessmentResponse {
+  id: string;
+  assessment_id: string;
+  organization_id: number;
+  question_index: number;
+  answer: string;
+  is_correct: boolean | null;
+  time_taken_seconds: number | null;
+  created_at: string;
+}

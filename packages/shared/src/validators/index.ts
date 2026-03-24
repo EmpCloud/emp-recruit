@@ -244,3 +244,107 @@ export const publicApplicationSchema = z.object({
   portfolio_url: z.string().url().optional(),
   source: z.nativeEnum(CandidateSource).default(CandidateSource.DIRECT),
 });
+
+// ---------------------------------------------------------------------------
+// Background Checks
+// ---------------------------------------------------------------------------
+
+const BackgroundCheckProvider = z.enum(["checkr", "sterling", "hireright", "manual"]);
+const BackgroundCheckType = z.enum(["criminal", "employment", "education", "credit", "reference", "identity"]);
+const BackgroundCheckResult = z.enum(["clear", "consider", "adverse", "pending"]);
+
+export const initiateBackgroundCheckSchema = z.object({
+  candidate_id: z.string().uuid(),
+  provider: BackgroundCheckProvider,
+  check_type: BackgroundCheckType,
+});
+
+export const createBackgroundCheckPackageSchema = z.object({
+  name: z.string().min(2).max(200),
+  description: z.string().optional(),
+  checks_included: z.array(BackgroundCheckType).min(1),
+  provider: BackgroundCheckProvider,
+  estimated_days: z.number().int().min(1).optional(),
+  cost: z.number().int().min(0).optional(),
+  is_default: z.boolean().default(false),
+});
+
+export const updateBackgroundCheckResultSchema = z.object({
+  result: BackgroundCheckResult,
+  result_details: z.record(z.any()).optional(),
+  report_url: z.string().url().optional(),
+});
+
+// ---------------------------------------------------------------------------
+// AI Job Description Generator
+// ---------------------------------------------------------------------------
+
+export const generateJobDescriptionSchema = z.object({
+  title: z.string().min(2).max(200),
+  department: z.string().max(100).optional(),
+  seniority: z.enum(["intern", "junior", "mid", "senior", "lead", "director", "vp", "c_level"]),
+  skills: z.array(z.string()).min(1),
+  location: z.string().max(200).optional(),
+  employment_type: z.string().max(50).optional(),
+  salary_range: z.string().max(100).optional(),
+  company_description: z.string().optional(),
+});
+
+// ---------------------------------------------------------------------------
+// Candidate Surveys / NPS
+// ---------------------------------------------------------------------------
+
+const SurveyType = z.enum(["post_interview", "post_offer", "post_rejection"]);
+
+export const sendSurveySchema = z.object({
+  candidate_id: z.string().uuid(),
+  application_id: z.string().uuid(),
+  survey_type: SurveyType,
+});
+
+export const submitSurveyResponseSchema = z.object({
+  responses: z.array(
+    z.object({
+      question_key: z.string().min(1).max(100),
+      rating: z.number().int().min(1).max(10).optional(),
+      text_response: z.string().optional(),
+    }),
+  ).min(1),
+});
+
+// ---------------------------------------------------------------------------
+// Psychometric Assessments
+// ---------------------------------------------------------------------------
+
+const AssessmentType = z.enum(["behavioral", "cognitive", "personality", "situational"]);
+const QuestionType = z.enum(["multiple_choice", "true_false", "text", "scale"]);
+
+export const createAssessmentTemplateSchema = z.object({
+  name: z.string().min(2).max(200),
+  description: z.string().optional(),
+  assessment_type: AssessmentType,
+  time_limit_minutes: z.number().int().min(1).max(480).optional(),
+  questions: z.array(
+    z.object({
+      question: z.string().min(1),
+      options: z.array(z.string()).default([]),
+      type: QuestionType,
+      correct_answer: z.string().nullable().optional(),
+    }),
+  ).min(1),
+});
+
+export const inviteCandidateAssessmentSchema = z.object({
+  candidate_id: z.string().uuid(),
+  template_id: z.string().uuid(),
+});
+
+export const submitAssessmentSchema = z.object({
+  answers: z.array(
+    z.object({
+      question_index: z.number().int().min(0),
+      answer: z.string().min(1),
+      time_taken_seconds: z.number().int().min(0).optional(),
+    }),
+  ).min(1),
+});
