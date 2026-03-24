@@ -30,7 +30,8 @@ EMP Recruit is the recruitment and applicant tracking module of the EmpCloud eco
 
 | Environment | URL |
 |-------------|-----|
-| Ngrok (public) | https://unliterary-acronically-sharee.ngrok-free.dev |
+| Frontend (test) | https://test-recruit.empcloud.com |
+| API (test) | https://test-recruit-api.empcloud.com |
 | Client (local) | http://localhost:5179 |
 | API (local) | http://localhost:4500 |
 | API Documentation | http://localhost:4500/api/docs |
