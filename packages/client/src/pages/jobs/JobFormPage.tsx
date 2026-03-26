@@ -99,7 +99,18 @@ export function JobFormPage() {
       queryClient.invalidateQueries({ queryKey: ["jobs"] });
       navigate(`/jobs/${res.data?.id}`);
     },
-    onError: () => toast.error("Failed to create job"),
+    onError: (err: any) => {
+      const msg = err?.response?.data?.error?.message || "Failed to create job";
+      const details = err?.response?.data?.error?.details;
+      if (details) {
+        const fieldErrors = Object.entries(details)
+          .map(([field, msgs]) => `${field}: ${(msgs as string[]).join(", ")}`)
+          .join("; ");
+        toast.error(`${msg} — ${fieldErrors}`);
+      } else {
+        toast.error(msg);
+      }
+    },
   });
 
   const updateMutation = useMutation({
@@ -110,7 +121,18 @@ export function JobFormPage() {
       queryClient.invalidateQueries({ queryKey: ["job", id] });
       navigate(`/jobs/${id}`);
     },
-    onError: () => toast.error("Failed to update job"),
+    onError: (err: any) => {
+      const msg = err?.response?.data?.error?.message || "Failed to update job";
+      const details = err?.response?.data?.error?.details;
+      if (details) {
+        const fieldErrors = Object.entries(details)
+          .map(([field, msgs]) => `${field}: ${(msgs as string[]).join(", ")}`)
+          .join("; ");
+        toast.error(`${msg} — ${fieldErrors}`);
+      } else {
+        toast.error(msg);
+      }
+    },
   });
 
   function handleSubmit(e: React.FormEvent) {

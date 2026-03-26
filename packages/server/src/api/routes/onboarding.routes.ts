@@ -3,6 +3,7 @@
 // GET    /templates        — List onboarding templates
 // POST   /templates        — Create template
 // PUT    /templates/:id    — Update template
+// GET    /templates/:id/tasks — List tasks for a template
 // POST   /templates/:id/tasks — Add task to template
 // PUT    /templates/:id/tasks/:taskId — Update template task
 // DELETE /templates/:id/tasks/:taskId — Remove template task
@@ -64,6 +65,20 @@ router.put(
       const orgId = req.user!.empcloudOrgId;
       const template = await onboardingService.updateTemplate(orgId, String(req.params.id), req.body);
       sendSuccess(res, template);
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// GET /templates/:id/tasks — List tasks for a template
+router.get(
+  "/templates/:id/tasks",
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const orgId = req.user!.empcloudOrgId;
+      const tasks = await onboardingService.listTemplateTasks(orgId, String(req.params.id));
+      sendSuccess(res, tasks);
     } catch (err) {
       next(err);
     }

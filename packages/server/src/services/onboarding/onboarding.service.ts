@@ -138,6 +138,30 @@ export async function listTemplates(orgId: number) {
 // Template Task Management
 // ---------------------------------------------------------------------------
 
+export async function listTemplateTasks(
+  orgId: number,
+  templateId: string,
+): Promise<OnboardingTemplateTask[]> {
+  const db = getDB();
+
+  // Verify template belongs to org
+  const template = await db.findOne<OnboardingTemplate>("onboarding_templates", {
+    id: templateId,
+    organization_id: orgId,
+  });
+  if (!template) {
+    throw new NotFoundError("OnboardingTemplate", templateId);
+  }
+
+  const result = await db.findMany<OnboardingTemplateTask>("onboarding_template_tasks", {
+    filters: { template_id: templateId },
+    sort: { field: "order", order: "asc" },
+    limit: 200,
+  });
+
+  return result.data;
+}
+
 export async function addTemplateTask(
   orgId: number,
   templateId: string,
