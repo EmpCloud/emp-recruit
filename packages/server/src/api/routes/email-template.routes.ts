@@ -23,7 +23,7 @@ const createSchema = z.object({
   trigger: z.string().min(1, "Trigger is required"),
   subject: z.string().min(1, "Subject is required"),
   body: z.string().min(1, "Body is required"),
-  is_active: z.boolean().optional(),
+  is_active: z.preprocess((v) => (v === 1 || v === "1" || v === true ? true : v === 0 || v === "0" || v === false ? false : v), z.boolean()).optional(),
 });
 
 const updateSchema = z.object({
@@ -31,7 +31,7 @@ const updateSchema = z.object({
   trigger: z.string().min(1).optional(),
   subject: z.string().min(1).optional(),
   body: z.string().min(1).optional(),
-  is_active: z.boolean().optional(),
+  is_active: z.preprocess((v) => (v === 1 || v === "1" || v === true ? true : v === 0 || v === "0" || v === false ? false : v), z.boolean()).optional(),
 });
 
 const previewSchema = z.object({

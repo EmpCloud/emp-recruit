@@ -4,6 +4,7 @@ import { Loader2, Gift, Plus, X } from "lucide-react";
 import { apiGet, apiPost, apiPut } from "@/api/client";
 import { formatDate } from "@/lib/utils";
 import toast from "react-hot-toast";
+import type { JobPosting, PaginatedResponse } from "@emp-recruit/shared";
 
 interface ReferralRow {
   id: string;
@@ -43,6 +44,16 @@ export function ReferralListPage() {
     notes: "",
   });
 
+  // Fetch open jobs for the dropdown
+  const jobsQuery = useQuery({
+    queryKey: ["jobs-for-referral"],
+    queryFn: async () => {
+      const res = await apiGet<PaginatedResponse<JobPosting>>("/jobs", { status: "open", limit: 100 });
+      return res.data?.data || [];
+    },
+  });
+  const openJobs: JobPosting[] = jobsQuery.data || [];
+
   const referralsQuery = useQuery({
     queryKey: ["referrals"],
     queryFn: async () => {
@@ -66,6 +77,18 @@ export function ReferralListPage() {
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!form.job_id) {
+      toast.error("Please select a job position");
+      return;
+    }
+    if (!form.first_name.trim() || !form.last_name.trim()) {
+      toast.error("Please enter the candidate's full name");
+      return;
+    }
+    if (!form.email.trim()) {
+      toast.error("Please enter the candidate's email");
+      return;
+    }
     submitMutation.mutate(form);
   }
 
@@ -93,15 +116,26 @@ export function ReferralListPage() {
           <h3 className="text-lg font-semibold text-gray-900">Submit a Referral</h3>
           <form onSubmit={handleSubmit} className="mt-4 grid gap-4 sm:grid-cols-2">
             <div className="sm:col-span-2">
-              <label className="block text-sm font-medium text-gray-700">Job ID *</label>
-              <input
-                type="text"
+              <label className="block text-sm font-medium text-gray-700">Job Position *</label>
+              <select
                 required
                 value={form.job_id}
                 onChange={(e) => setForm((p) => ({ ...p, job_id: e.target.value }))}
-                placeholder="Paste the job UUID"
                 className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-              />
+              >
+                <option value="">Select a job position...</option>
+                {jobsQuery.isLoading ? (
+                  <option disabled>Loading jobs...</option>
+                ) : openJobs.length === 0 ? (
+                  <option disabled>No open positions available</option>
+                ) : (
+                  openJobs.map((job) => (
+                    <option key={job.id} value={job.id}>
+                      {job.title}{job.department ? ` — ${job.department}` : ""}{job.location ? ` (${job.location})` : ""}
+                    </option>
+                  ))
+                )}
+              </select>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700">First Name *</label>

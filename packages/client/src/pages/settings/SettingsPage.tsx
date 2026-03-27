@@ -277,7 +277,7 @@ function EmailTemplateSettings() {
       trigger: t.trigger,
       subject: t.subject,
       body: t.body,
-      is_active: t.is_active,
+      is_active: Boolean(t.is_active),
     });
   }
 
