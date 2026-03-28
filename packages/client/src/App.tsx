@@ -37,6 +37,9 @@ const SettingsPage = lazy(() =>
 const ScoreReportPage = lazy(() =>
   import("@/pages/scoring/ScoreReportPage").then((m) => ({ default: m.ScoreReportPage })),
 );
+const InternalJobsPage = lazy(() =>
+  import("@/pages/internal-jobs/InternalJobsPage").then((m) => ({ default: m.InternalJobsPage })),
+);
 
 function PageLoader() {
   return (
@@ -127,6 +130,9 @@ export default function App() {
 
           {/* Scoring */}
           <Route path="/scoring/:appId" element={<ScoreReportPage />} />
+
+          {/* Internal Job Board (employee self-service) */}
+          <Route path="/internal-jobs" element={<InternalJobsPage />} />
 
           {/* Referrals */}
           <Route path="/referrals" element={<ReferralListPage />} />

@@ -18,16 +18,27 @@ import {
 import { isLoggedIn, getUser, useAuthStore } from "@/lib/auth-store";
 import { cn, getInitials } from "@/lib/utils";
 
-const NAV_ITEMS = [
+type Role = "org_admin" | "hr_admin" | "hr_manager" | "employee";
+const ADMIN_ROLES: Role[] = ["org_admin", "hr_admin", "hr_manager"];
+
+interface NavItem {
+  to: string;
+  label: string;
+  icon: any;
+  adminOnly?: boolean;
+}
+
+const NAV_ITEMS: NavItem[] = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { to: "/jobs", label: "Jobs", icon: Briefcase },
-  { to: "/candidates", label: "Candidates", icon: Users },
-  { to: "/interviews", label: "Interviews", icon: Calendar },
-  { to: "/offers", label: "Offers", icon: FileText },
-  { to: "/onboarding", label: "Onboarding", icon: ClipboardList },
+  { to: "/internal-jobs", label: "Internal Jobs", icon: Briefcase },
+  { to: "/jobs", label: "Job Postings", icon: Briefcase, adminOnly: true },
+  { to: "/candidates", label: "Candidates", icon: Users, adminOnly: true },
+  { to: "/interviews", label: "Interviews", icon: Calendar, adminOnly: true },
+  { to: "/offers", label: "Offers", icon: FileText, adminOnly: true },
+  { to: "/onboarding", label: "Onboarding", icon: ClipboardList, adminOnly: true },
   { to: "/referrals", label: "Referrals", icon: Gift },
-  { to: "/analytics", label: "Analytics", icon: BarChart3 },
-  { to: "/settings", label: "Settings", icon: Settings },
+  { to: "/analytics", label: "Analytics", icon: BarChart3, adminOnly: true },
+  { to: "/settings", label: "Settings", icon: Settings, adminOnly: true },
 ];
 
 export function DashboardLayout() {
@@ -64,7 +75,10 @@ export function DashboardLayout() {
 
         {/* Nav */}
         <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
-          {NAV_ITEMS.map((item) => (
+          {NAV_ITEMS.filter((item) => {
+            if (item.adminOnly && !ADMIN_ROLES.includes((user?.role || "employee") as Role)) return false;
+            return true;
+          }).map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
