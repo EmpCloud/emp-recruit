@@ -105,8 +105,10 @@ v1.use("/ai", scoringRoutes); // alias — /ai/batch-score -> /scoring/batch-sco
 v1.use("/offer-letters", offerLetterRoutes);
 v1.use("/applications", comparisonRoutes);
 v1.use("/pipeline", pipelineRoutes);
+v1.use("/pipeline-stages", pipelineRoutes); // alias — /pipeline-stages/stages -> /pipeline/stages (#864)
 v1.use("/background-checks", backgroundCheckRoutes);
 v1.use("/jobs", jobDescriptionRoutes);
+v1.use("/job-descriptions", jobDescriptionRoutes); // alias — /job-descriptions/generate-description (#862 #863)
 v1.use("/surveys", surveyRoutes);
 v1.use("/assessments", assessmentRoutes);
 

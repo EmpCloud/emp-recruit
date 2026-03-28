@@ -120,4 +120,24 @@ router.post(
   },
 );
 
+// POST /score-resume — alias for /applications/:appId/score (#865)
+// Accepts { application_id } in body
+router.post(
+  "/score-resume",
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const appId = req.body.application_id || req.body.applicationId;
+      if (!appId) throw new ValidationError("application_id is required in request body");
+      const orgId = req.user!.empcloudOrgId;
+      const db = getDB();
+      const app = await db.findOne<any>("applications", { id: appId, organization_id: orgId });
+      if (!app) throw new NotFoundError("Application", appId);
+      const result = await scoringService.scoreCandidate(orgId, app.candidate_id, app.job_id);
+      return sendSuccess(res, result);
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
 export { router as scoringRoutes };
