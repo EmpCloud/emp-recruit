@@ -195,4 +195,20 @@ router.get(
   },
 );
 
+// GET /:id — Get assessment detail (returns assessment + template + responses) (#869)
+router.get(
+  "/:id",
+  authenticate,
+  authorize("super_admin", "org_admin", "hr_admin", "hr_manager"),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const orgId = req.user!.empcloudOrgId;
+      const result = await assessmentService.getAssessmentResults(orgId, String(req.params.id));
+      sendSuccess(res, result);
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
 export { router as assessmentRoutes };

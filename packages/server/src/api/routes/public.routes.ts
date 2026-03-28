@@ -67,6 +67,16 @@ router.get("/careers/:slug", async (req: Request, res: Response, next: NextFunct
   }
 });
 
+// Alias: GET /career-page/:slug -> /careers/:slug (#867)
+router.get("/career-page/:slug", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const result = await careerPageService.getPublicCareerPage(String(req.params.slug));
+    sendSuccess(res, result);
+  } catch (err) {
+    next(err);
+  }
+});
+
 // ---------------------------------------------------------------------------
 // GET /careers/:slug/jobs — list open jobs
 // ---------------------------------------------------------------------------

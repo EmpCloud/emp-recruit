@@ -101,4 +101,23 @@ router.get(
   },
 );
 
+// POST /batch-score — score all applications for a job (alias for /jobs/:jobId/batch-score) (#866)
+// Accepts { job_id } in body instead of URL param, used by /ai/batch-score alias
+router.post(
+  "/batch-score",
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const jobId = req.body.job_id || req.body.jobId;
+      if (!jobId) throw new ValidationError("job_id is required in request body");
+
+      const orgId = req.user!.empcloudOrgId;
+      const result = await scoringService.batchScoreCandidates(orgId, String(jobId));
+
+      return sendSuccess(res, result);
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
 export { router as scoringRoutes };

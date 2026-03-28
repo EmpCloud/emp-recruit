@@ -101,6 +101,7 @@ v1.use("/email-templates", emailTemplateRoutes);
 v1.use("/career-pages", careerPageRoutes);
 v1.use("/analytics", analyticsRoutes);
 v1.use("/scoring", scoringRoutes);
+v1.use("/ai", scoringRoutes); // alias — /ai/batch-score -> /scoring/batch-score (#866)
 v1.use("/offer-letters", offerLetterRoutes);
 v1.use("/applications", comparisonRoutes);
 v1.use("/pipeline", pipelineRoutes);
