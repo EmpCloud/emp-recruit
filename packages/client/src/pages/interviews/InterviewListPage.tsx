@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
-import { Calendar, Users, Plus, Search, ChevronLeft, ChevronRight } from "lucide-react";
+import { Link, Navigate } from "react-router-dom";
+import { Calendar, Users, Plus, Search, ChevronLeft, ChevronRight, ShieldAlert } from "lucide-react";
 import { apiGet } from "@/api/client";
+import { getUser } from "@/lib/auth-store";
 import { cn, formatDate } from "@/lib/utils";
 import type { InterviewStatus, InterviewType, PaginatedResponse } from "@emp-recruit/shared";
 
@@ -45,7 +46,16 @@ function formatTime(dateStr: string): string {
   }).format(new Date(dateStr));
 }
 
+const ADMIN_ROLES = ["org_admin", "hr_admin", "hr_manager"];
+
 export function InterviewListPage() {
+  const user = getUser();
+
+  // RBAC: only admin/HR roles can access interview management
+  if (user && !ADMIN_ROLES.includes(user.role)) {
+    return <Navigate to="/dashboard" replace />;
+  }
+
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState("");
   const perPage = 20;

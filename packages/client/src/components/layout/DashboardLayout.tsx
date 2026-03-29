@@ -14,6 +14,7 @@ import {
   Menu,
   X,
   ClipboardList,
+  Brain,
 } from "lucide-react";
 import { isLoggedIn, getUser, useAuthStore } from "@/lib/auth-store";
 import { cn, getInitials } from "@/lib/utils";
@@ -36,6 +37,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: "/interviews", label: "Interviews", icon: Calendar, adminOnly: true },
   { to: "/offers", label: "Offers", icon: FileText, adminOnly: true },
   { to: "/onboarding", label: "Onboarding", icon: ClipboardList, adminOnly: true },
+  { to: "/scoring", label: "AI Scoring", icon: Brain, adminOnly: true },
   { to: "/referrals", label: "Referrals", icon: Gift },
   { to: "/analytics", label: "Analytics", icon: BarChart3, adminOnly: true },
   { to: "/settings", label: "Settings", icon: Settings, adminOnly: true },

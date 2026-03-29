@@ -37,6 +37,9 @@ const SettingsPage = lazy(() =>
 const ScoreReportPage = lazy(() =>
   import("@/pages/scoring/ScoreReportPage").then((m) => ({ default: m.ScoreReportPage })),
 );
+const ScoringPage = lazy(() =>
+  import("@/pages/scoring/ScoringPage").then((m) => ({ default: m.ScoringPage })),
+);
 const InternalJobsPage = lazy(() =>
   import("@/pages/internal-jobs/InternalJobsPage").then((m) => ({ default: m.InternalJobsPage })),
 );
@@ -128,7 +131,8 @@ export default function App() {
           {offerRoutes}
           {onboardingRoutes}
 
-          {/* Scoring */}
+          {/* Scoring / AI Resume */}
+          <Route path="/scoring" element={<ScoringPage />} />
           <Route path="/scoring/:appId" element={<ScoreReportPage />} />
 
           {/* Internal Job Board (employee self-service) */}

@@ -18,9 +18,9 @@ const router = Router();
 router.use(authenticate);
 
 // ---------------------------------------------------------------------------
-// GET / — List interviews (any authenticated user)
+// GET / — List interviews (HR/admin only)
 // ---------------------------------------------------------------------------
-router.get("/", async (req: Request, res: Response, next: NextFunction) => {
+router.get("/", authorize("org_admin", "hr_admin", "hr_manager"), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const orgId = req.user!.empcloudOrgId;
     const { page, limit, application_id, status, sort_field, sort_order } = req.query;
@@ -77,9 +77,9 @@ router.post(
 );
 
 // ---------------------------------------------------------------------------
-// GET /:id — Get interview detail with panelists + feedback
+// GET /:id — Get interview detail with panelists + feedback (HR/admin only)
 // ---------------------------------------------------------------------------
-router.get("/:id", async (req: Request, res: Response, next: NextFunction) => {
+router.get("/:id", authorize("org_admin", "hr_admin", "hr_manager"), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const orgId = req.user!.empcloudOrgId;
     const interview = await interviewService.getInterview(orgId, String(req.params.id));
@@ -92,7 +92,7 @@ router.get("/:id", async (req: Request, res: Response, next: NextFunction) => {
 // ---------------------------------------------------------------------------
 // GET /:id/calendar-links — Get calendar URLs (Google, Outlook, Office 365)
 // ---------------------------------------------------------------------------
-router.get("/:id/calendar-links", async (req: Request, res: Response, next: NextFunction) => {
+router.get("/:id/calendar-links", authorize("org_admin", "hr_admin", "hr_manager"), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const orgId = req.user!.empcloudOrgId;
     const links = await interviewService.getCalendarLinks(orgId, String(req.params.id));
@@ -105,7 +105,7 @@ router.get("/:id/calendar-links", async (req: Request, res: Response, next: Next
 // ---------------------------------------------------------------------------
 // GET /:id/calendar.ics — Download ICS file for the interview
 // ---------------------------------------------------------------------------
-router.get("/:id/calendar.ics", async (req: Request, res: Response, next: NextFunction) => {
+router.get("/:id/calendar.ics", authorize("org_admin", "hr_admin", "hr_manager"), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const orgId = req.user!.empcloudOrgId;
     const icsContent = await interviewService.generateICSFile(orgId, String(req.params.id));
@@ -118,9 +118,9 @@ router.get("/:id/calendar.ics", async (req: Request, res: Response, next: NextFu
 });
 
 // ---------------------------------------------------------------------------
-// PUT /:id — Update / reschedule interview
+// PUT /:id — Update / reschedule interview (HR/admin only)
 // ---------------------------------------------------------------------------
-router.put("/:id", async (req: Request, res: Response, next: NextFunction) => {
+router.put("/:id", authorize("org_admin", "hr_admin", "hr_manager"), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const orgId = req.user!.empcloudOrgId;
     const { type, round, title, scheduled_at, duration_minutes, location, meeting_link, notes } = req.body;
@@ -143,9 +143,9 @@ router.put("/:id", async (req: Request, res: Response, next: NextFunction) => {
 });
 
 // ---------------------------------------------------------------------------
-// PATCH /:id/status — Change interview status
+// PATCH /:id/status — Change interview status (HR/admin only)
 // ---------------------------------------------------------------------------
-router.patch("/:id/status", async (req: Request, res: Response, next: NextFunction) => {
+router.patch("/:id/status", authorize("org_admin", "hr_admin", "hr_manager"), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const orgId = req.user!.empcloudOrgId;
     const { status } = req.body;
@@ -308,9 +308,9 @@ router.post(
 );
 
 // ---------------------------------------------------------------------------
-// GET /:id/recordings — List recordings for an interview
+// GET /:id/recordings — List recordings for an interview (HR/admin only)
 // ---------------------------------------------------------------------------
-router.get("/:id/recordings", async (req: Request, res: Response, next: NextFunction) => {
+router.get("/:id/recordings", authorize("org_admin", "hr_admin", "hr_manager"), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const orgId = req.user!.empcloudOrgId;
     const recordings = await recordingService.getRecordings(orgId, String(req.params.id));
@@ -359,9 +359,9 @@ router.post(
 );
 
 // ---------------------------------------------------------------------------
-// GET /:id/transcript — Get transcript for an interview
+// GET /:id/transcript — Get transcript for an interview (HR/admin only)
 // ---------------------------------------------------------------------------
-router.get("/:id/transcript", async (req: Request, res: Response, next: NextFunction) => {
+router.get("/:id/transcript", authorize("org_admin", "hr_admin", "hr_manager"), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const orgId = req.user!.empcloudOrgId;
     const transcript = await recordingService.getTranscript(orgId, String(req.params.id));
