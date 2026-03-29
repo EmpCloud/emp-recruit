@@ -43,7 +43,7 @@ export function LoginPage() {
   return (
     <div className="flex min-h-screen">
       {/* Left panel — brand */}
-      <div className="hidden lg:flex lg:w-1/2 items-center justify-center bg-gradient-to-br from-blue-600 to-blue-800 p-12">
+      <div className="hidden lg:flex lg:w-1/2 items-center justify-center bg-gradient-to-br from-brand-600 to-brand-800 p-12">
         <div className="max-w-md text-white">
           <div className="flex items-center gap-3 mb-8">
             <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-white/20">
@@ -54,15 +54,15 @@ export function LoginPage() {
           <h2 className="text-3xl font-bold leading-tight mb-4">
             Hire the best talent faster
           </h2>
-          <p className="text-blue-100 text-lg leading-relaxed">
+          <p className="text-brand-100 text-lg leading-relaxed">
             Post jobs, track applicants, schedule interviews, parse resumes, and
             manage offers &mdash; all in one place.
           </p>
           <div className="mt-10 grid grid-cols-2 gap-4">
             {features.map((f) => (
               <div key={f} className="flex items-center gap-2 text-sm">
-                <span className="h-1.5 w-1.5 rounded-full bg-blue-300" />
-                <span className="text-blue-100">{f}</span>
+                <span className="h-1.5 w-1.5 rounded-full bg-brand-300" />
+                <span className="text-brand-100">{f}</span>
               </div>
             ))}
           </div>
@@ -74,7 +74,7 @@ export function LoginPage() {
         <div className="w-full max-w-sm">
           {/* Mobile logo */}
           <div className="mb-8 flex items-center justify-center gap-3 lg:hidden">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-600">
               <Briefcase className="h-6 w-6 text-white" />
             </div>
             <span className="text-xl font-bold text-gray-900">EMP Recruit</span>
@@ -100,7 +100,7 @@ export function LoginPage() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
-                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
                 />
               </div>
               <div>
@@ -117,7 +117,7 @@ export function LoginPage() {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     required
-                    className="block w-full rounded-lg border border-gray-300 px-3 py-2 pr-10 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    className="block w-full rounded-lg border border-gray-300 px-3 py-2 pr-10 text-sm shadow-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
                   />
                   <button
                     type="button"
@@ -135,7 +135,7 @@ export function LoginPage() {
               <button
                 type="submit"
                 disabled={loginMutation.isPending}
-                className="flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                className="flex w-full items-center justify-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50"
               >
                 {loginMutation.isPending ? (
                   <>
