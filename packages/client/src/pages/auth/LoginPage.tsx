@@ -1,9 +1,20 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { UserPlus, Eye, EyeOff } from "lucide-react";
+import { Briefcase, Eye, EyeOff, Loader2 } from "lucide-react";
 import { useLogin } from "@/api/hooks";
 import { useAuthStore } from "@/lib/auth-store";
 import toast from "react-hot-toast";
+
+const features = [
+  "Job postings",
+  "Applicant tracking",
+  "Interview scheduling",
+  "Resume parsing",
+  "Offer management",
+  "Onboarding",
+  "AI scoring",
+  "Analytics",
+];
 
 export function LoginPage() {
   const navigate = useNavigate();
@@ -30,68 +41,122 @@ export function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
-      <div className="w-full max-w-sm">
-        <div className="mb-8 flex items-center justify-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-600">
-            <UserPlus className="h-6 w-6 text-white" />
-          </div>
-          <span className="text-xl font-bold text-gray-900">EMP Recruit</span>
-        </div>
-
-        <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-          <h2 className="text-2xl font-bold text-gray-900">Welcome back</h2>
-          <p className="mt-1 text-sm text-gray-500">Sign in to manage recruitment</p>
-
-          <form onSubmit={handleSubmit} className="mt-6 space-y-4">
-            <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700">
-                Email address
-              </label>
-              <input
-                id="email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-              />
+    <div className="flex min-h-screen">
+      {/* Left panel — brand */}
+      <div className="hidden lg:flex lg:w-1/2 items-center justify-center bg-gradient-to-br from-blue-600 to-blue-800 p-12">
+        <div className="max-w-md text-white">
+          <div className="flex items-center gap-3 mb-8">
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-white/20">
+              <Briefcase className="h-7 w-7 text-white" />
             </div>
-            <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700">
-                Password
-              </label>
-              <div className="relative mt-1">
-                <input
-                  id="password"
-                  type={showPassword ? "text" : "password"}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  className="block w-full rounded-lg border border-gray-300 px-3 py-2 pr-10 text-sm shadow-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                >
-                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
+            <span className="text-2xl font-bold">EMP Recruit</span>
+          </div>
+          <h2 className="text-3xl font-bold leading-tight mb-4">
+            Hire the best talent faster
+          </h2>
+          <p className="text-blue-100 text-lg leading-relaxed">
+            Post jobs, track applicants, schedule interviews, parse resumes, and
+            manage offers &mdash; all in one place.
+          </p>
+          <div className="mt-10 grid grid-cols-2 gap-4">
+            {features.map((f) => (
+              <div key={f} className="flex items-center gap-2 text-sm">
+                <span className="h-1.5 w-1.5 rounded-full bg-blue-300" />
+                <span className="text-blue-100">{f}</span>
               </div>
-            </div>
-            <button
-              type="submit"
-              disabled={loginMutation.isPending}
-              className="w-full rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50"
-            >
-              {loginMutation.isPending ? "Signing in..." : "Sign in"}
-            </button>
-          </form>
-
-          <div className="mt-4 rounded-lg bg-gray-50 p-3 text-xs text-gray-500">
-            <p className="font-medium">Demo credentials:</p>
-            <p>ananya@technova.in / Welcome@123</p>
+            ))}
           </div>
+        </div>
+      </div>
+
+      {/* Right panel — form */}
+      <div className="flex w-full lg:w-1/2 items-center justify-center bg-gray-50 px-4">
+        <div className="w-full max-w-sm">
+          {/* Mobile logo */}
+          <div className="mb-8 flex items-center justify-center gap-3 lg:hidden">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600">
+              <Briefcase className="h-6 w-6 text-white" />
+            </div>
+            <span className="text-xl font-bold text-gray-900">EMP Recruit</span>
+          </div>
+
+          <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+            <h2 className="text-2xl font-bold text-gray-900">Welcome back</h2>
+            <p className="mt-1 text-sm text-gray-500">
+              Sign in to manage recruitment
+            </p>
+
+            <form onSubmit={handleSubmit} className="mt-6 space-y-4">
+              <div>
+                <label
+                  htmlFor="email"
+                  className="block text-sm font-medium text-gray-700"
+                >
+                  Email address
+                </label>
+                <input
+                  id="email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+              </div>
+              <div>
+                <label
+                  htmlFor="password"
+                  className="block text-sm font-medium text-gray-700"
+                >
+                  Password
+                </label>
+                <div className="relative mt-1">
+                  <input
+                    id="password"
+                    type={showPassword ? "text" : "password"}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    className="block w-full rounded-lg border border-gray-300 px-3 py-2 pr-10 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  >
+                    {showPassword ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </button>
+                </div>
+              </div>
+              <button
+                type="submit"
+                disabled={loginMutation.isPending}
+                className="flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+              >
+                {loginMutation.isPending ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Signing in...
+                  </>
+                ) : (
+                  "Sign in"
+                )}
+              </button>
+            </form>
+
+            <div className="mt-4 rounded-lg bg-gray-50 p-3 text-xs text-gray-500">
+              <p className="font-medium">Demo credentials:</p>
+              <p>ananya@technova.in / Welcome@123</p>
+            </div>
+          </div>
+
+          <p className="mt-6 text-center text-xs text-gray-400">
+            Part of the EMP HRMS ecosystem
+          </p>
         </div>
       </div>
     </div>
