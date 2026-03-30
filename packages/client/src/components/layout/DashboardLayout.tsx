@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { isLoggedIn, getUser, useAuthStore } from "@/lib/auth-store";
 import { cn, getInitials } from "@/lib/utils";
+import { BackToDashboard } from "@/components/BackToDashboard";
 
 type Role = "org_admin" | "hr_admin" | "hr_manager" | "employee";
 const ADMIN_ROLES: Role[] = ["org_admin", "hr_admin", "hr_manager"];
@@ -148,6 +149,7 @@ export function DashboardLayout() {
           >
             <Menu className="h-5 w-5" />
           </button>
+          <BackToDashboard />
           <div className="flex-1" />
           <div className="flex items-center gap-3">
             <div className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-100 text-brand-700 text-xs font-semibold">
