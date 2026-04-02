@@ -176,12 +176,22 @@ export function ScoreReportPage() {
     );
   }
 
-  const matchedSkills: string[] = score.matched_skills
-    ? JSON.parse(score.matched_skills)
-    : [];
-  const missingSkills: string[] = score.missing_skills
-    ? JSON.parse(score.missing_skills)
-    : [];
+  let matchedSkills: string[] = [];
+  try {
+    matchedSkills = score.matched_skills
+      ? Array.isArray(score.matched_skills)
+        ? score.matched_skills
+        : JSON.parse(score.matched_skills)
+      : [];
+  } catch { matchedSkills = []; }
+  let missingSkills: string[] = [];
+  try {
+    missingSkills = score.missing_skills
+      ? Array.isArray(score.missing_skills)
+        ? score.missing_skills
+        : JSON.parse(score.missing_skills)
+      : [];
+  } catch { missingSkills = []; }
   const rec = RECOMMENDATION_CONFIG[score.recommendation];
 
   return (

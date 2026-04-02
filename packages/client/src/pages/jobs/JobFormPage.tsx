@@ -86,7 +86,13 @@ export function JobFormPage() {
         remote_policy: "onsite", // default, can be extended
         requirements: j.requirements ?? "",
         benefits: j.benefits ?? "",
-        skills: j.skills ? JSON.parse(j.skills).join(", ") : "",
+        skills: j.skills
+          ? Array.isArray(j.skills)
+            ? j.skills.join(", ")
+            : typeof j.skills === "string"
+              ? (() => { try { const p = JSON.parse(j.skills as string); return Array.isArray(p) ? p.join(", ") : j.skills; } catch { return j.skills; } })()
+              : ""
+          : "",
         closes_at: j.closes_at ? j.closes_at.slice(0, 10) : "",
       });
     }

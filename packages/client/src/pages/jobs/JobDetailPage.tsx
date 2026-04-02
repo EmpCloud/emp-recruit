@@ -580,12 +580,22 @@ export function JobDetailPage() {
                 </div>
               ) : (
                 rankings.map((r: RankedCandidate, idx: number) => {
-                  const matchedSkills: string[] = r.matched_skills
-                    ? JSON.parse(r.matched_skills)
-                    : [];
-                  const missingSkills: string[] = r.missing_skills
-                    ? JSON.parse(r.missing_skills)
-                    : [];
+                  let matchedSkills: string[] = [];
+                  try {
+                    matchedSkills = r.matched_skills
+                      ? Array.isArray(r.matched_skills)
+                        ? r.matched_skills
+                        : JSON.parse(r.matched_skills)
+                      : [];
+                  } catch { matchedSkills = []; }
+                  let missingSkills: string[] = [];
+                  try {
+                    missingSkills = r.missing_skills
+                      ? Array.isArray(r.missing_skills)
+                        ? r.missing_skills
+                        : JSON.parse(r.missing_skills)
+                      : [];
+                  } catch { missingSkills = []; }
                   const recBadge = RECOMMENDATION_BADGE[r.recommendation];
 
                   return (
