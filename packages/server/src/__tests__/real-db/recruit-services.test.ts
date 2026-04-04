@@ -328,6 +328,9 @@ describe("ApplicationService", () => {
   });
 
   it("should list applications with filters", async () => {
+    const cand = await seedCandidate();
+    await seedApplication(jobId, cand.id);
+
     const apps = await db("applications")
       .where({ organization_id: ORG_ID, job_id: jobId })
       .orderBy("applied_at", "desc");
