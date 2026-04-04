@@ -151,7 +151,7 @@ describe("CandidateService", () => {
 
     const updated = await db("candidates").where({ id }).first();
     expect(updated.current_company).toBe("Acme Corp");
-    expect(updated.experience_years).toBe(5);
+    expect(Number(updated.experience_years)).toBe(5);
   });
 
   it("should list candidates with pagination", async () => {
@@ -202,7 +202,7 @@ describe("JobService", () => {
 
     const updated = await db("job_postings").where({ id }).first();
     expect(updated.department).toBe("Engineering");
-    expect(updated.salary_min).toBe(500000);
+    expect(Number(updated.salary_min)).toBe(500000);
   });
 
   it("should change job status to closed", async () => {
@@ -491,7 +491,7 @@ describe("OfferService", () => {
 
     const offer = await db("offers").where({ id }).first();
     expect(offer.status).toBe("draft");
-    expect(offer.salary_amount).toBe(1200000);
+    expect(Number(offer.salary_amount)).toBe(1200000);
   });
 
   it("should update a draft offer", async () => {
@@ -518,7 +518,7 @@ describe("OfferService", () => {
     });
 
     const updated = await db("offers").where({ id }).first();
-    expect(updated.salary_amount).toBe(1500000);
+    expect(Number(updated.salary_amount)).toBe(1500000);
     expect(updated.job_title).toBe("Senior Engineer");
   });
 
@@ -719,7 +719,7 @@ describe("ReferralService", () => {
 
     const referral = await db("referrals").where({ id: refId }).first();
     expect(referral.status).toBe("submitted");
-    expect(referral.referrer_id).toBe(USER_ID);
+    expect(Number(referral.referrer_id)).toBe(USER_ID);
   });
 
   it("should list referrals with enrichment", async () => {
@@ -758,7 +758,7 @@ describe("ReferralService", () => {
 
     const updated = await db("referrals").where({ id: refId }).first();
     expect(updated.status).toBe("bonus_paid");
-    expect(updated.bonus_amount).toBe(25000);
+    expect(Number(updated.bonus_amount)).toBe(25000);
   });
 });
 
@@ -928,7 +928,7 @@ describe("AssessmentService", () => {
 
     const template = await db("assessment_templates").where({ id }).first();
     expect(template.name).toContain("Tech Assessment");
-    const parsedQ = JSON.parse(template.questions);
+    const parsedQ = typeof template.questions === "string" ? JSON.parse(template.questions) : template.questions;
     expect(parsedQ.length).toBe(2);
   });
 
