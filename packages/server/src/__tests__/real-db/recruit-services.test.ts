@@ -19,6 +19,7 @@ const EMP_USER_ID = 524; // priya
 
 const TS = Date.now();
 const cleanup: { table: string; id: string }[] = [];
+const globalCleanup: { table: string; id: string }[] = [];
 
 beforeAll(async () => {
   db = knexLib({
@@ -46,6 +47,14 @@ afterEach(async () => {
 });
 
 afterAll(async () => {
+  // Clean up items seeded in beforeAll blocks (reverse order for FK deps)
+  for (const item of globalCleanup.reverse()) {
+    try {
+      await db(item.table).where({ id: item.id }).del();
+    } catch {
+      // ignore
+    }
+  }
   if (db) await db.destroy();
 });
 
@@ -53,7 +62,7 @@ afterAll(async () => {
 // Helpers
 // ---------------------------------------------------------------------------
 
-async function seedCandidate(overrides: Record<string, any> = {}) {
+async function seedCandidate(overrides: Record<string, any> = {}, global = false) {
   const id = uuidv4();
   const email = `test-${TS}-${Math.random().toString(36).slice(2, 6)}@recruit-test.com`;
   await db("candidates").insert({
@@ -65,11 +74,11 @@ async function seedCandidate(overrides: Record<string, any> = {}) {
     source: "direct",
     ...overrides,
   });
-  cleanup.push({ table: "candidates", id });
+  (global ? globalCleanup : cleanup).push({ table: "candidates", id });
   return { id, email };
 }
 
-async function seedJob(overrides: Record<string, any> = {}) {
+async function seedJob(overrides: Record<string, any> = {}, global = false) {
   const id = uuidv4();
   const slug = `test-job-${TS}-${Math.random().toString(36).slice(2, 6)}`;
   await db("job_postings").insert({
@@ -83,11 +92,11 @@ async function seedJob(overrides: Record<string, any> = {}) {
     created_by: USER_ID,
     ...overrides,
   });
-  cleanup.push({ table: "job_postings", id });
+  (global ? globalCleanup : cleanup).push({ table: "job_postings", id });
   return { id, slug };
 }
 
-async function seedApplication(jobId: string, candidateId: string, overrides: Record<string, any> = {}) {
+async function seedApplication(jobId: string, candidateId: string, overrides: Record<string, any> = {}, global = false) {
   const id = uuidv4();
   await db("applications").insert({
     id,
@@ -99,7 +108,7 @@ async function seedApplication(jobId: string, candidateId: string, overrides: Re
     applied_at: new Date(),
     ...overrides,
   });
-  cleanup.push({ table: "applications", id });
+  (global ? globalCleanup : cleanup).push({ table: "applications", id });
   return id;
 }
 
@@ -263,9 +272,9 @@ describe("ApplicationService", () => {
   let candidateId: string;
 
   beforeAll(async () => {
-    const job = await seedJob();
+    const job = await seedJob({}, true);
     jobId = job.id;
-    const cand = await seedCandidate();
+    const cand = await seedCandidate({}, true);
     candidateId = cand.id;
   });
 
@@ -464,11 +473,11 @@ describe("OfferService", () => {
   let applicationId: string;
 
   beforeAll(async () => {
-    const job = await seedJob();
+    const job = await seedJob({}, true);
     jobId = job.id;
-    const cand = await seedCandidate();
+    const cand = await seedCandidate({}, true);
     candidateId = cand.id;
-    applicationId = await seedApplication(jobId, candidateId);
+    applicationId = await seedApplication(jobId, candidateId, {}, true);
   });
 
   it("should create an offer", async () => {
@@ -770,9 +779,9 @@ describe("InterviewService", () => {
   let applicationId: string;
 
   beforeAll(async () => {
-    const { id: jobId } = await seedJob();
-    const { id: candidateId } = await seedCandidate();
-    applicationId = await seedApplication(jobId, candidateId);
+    const { id: jobId } = await seedJob({}, true);
+    const { id: candidateId } = await seedCandidate({}, true);
+    applicationId = await seedApplication(jobId, candidateId, {}, true);
   });
 
   it("should schedule an interview with panelists", async () => {
@@ -1077,11 +1086,11 @@ describe("OnboardingService", () => {
     let templateTaskId: string;
 
     beforeAll(async () => {
-      const job = await seedJob();
+      const job = await seedJob({}, true);
       jobId = job.id;
-      const cand = await seedCandidate();
+      const cand = await seedCandidate({}, true);
       candidateId = cand.id;
-      applicationId = await seedApplication(jobId, candidateId, { stage: "hired" });
+      applicationId = await seedApplication(jobId, candidateId, { stage: "hired" }, true);
 
       templateId = uuidv4();
       await db("onboarding_templates").insert({
@@ -1089,7 +1098,7 @@ describe("OnboardingService", () => {
         organization_id: ORG_ID,
         name: `CL Template ${TS}`,
       });
-      cleanup.push({ table: "onboarding_templates", id: templateId });
+      globalCleanup.push({ table: "onboarding_templates", id: templateId });
 
       templateTaskId = uuidv4();
       await db("onboarding_template_tasks").insert({
@@ -1101,7 +1110,7 @@ describe("OnboardingService", () => {
         order: 0,
         is_required: true,
       });
-      cleanup.push({ table: "onboarding_template_tasks", id: templateTaskId });
+      globalCleanup.push({ table: "onboarding_template_tasks", id: templateTaskId });
     });
 
     it("should generate a checklist from template", async () => {
