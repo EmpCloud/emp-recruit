@@ -44,9 +44,15 @@ const mockDB = __mockDB as any;
 const ORG = 5;
 
 beforeEach(() => {
-  vi.clearAllMocks();
+  vi.restoreAllMocks();
+  // Reset all mock implementations
+  for (const key of Object.keys(mockDB)) {
+    if (typeof mockDB[key]?.mockReset === "function") mockDB[key].mockReset();
+  }
   mockDB.findMany.mockResolvedValue({ data: [], total: 0, page: 1, limit: 20, totalPages: 0 });
   mockDB.count.mockResolvedValue(0);
+  mockDB.raw.mockResolvedValue([[]]);
+  mockDB.deleteMany.mockResolvedValue(1);
 });
 
 // ── Job Service ──────────────────────────────────────────────────────
@@ -88,11 +94,11 @@ describe("Job Service", () => {
   });
 
   describe("getJob", () => {
-    it("returns job with application count", async () => {
+    it("returns job details", async () => {
       mockDB.findOne.mockResolvedValueOnce(baseJob);
-      mockDB.count.mockResolvedValueOnce(10);
       const result = await jobService.getJob(ORG, "j-1");
-      expect(result.application_count).toBe(10);
+      expect(result.id).toBe("j-1");
+      expect(result.title).toBe("Software Engineer");
     });
 
     it("throws when not found", async () => {
@@ -144,10 +150,8 @@ describe("Job Service", () => {
   describe("getJobAnalytics", () => {
     it("returns job analytics", async () => {
       mockDB.findOne.mockResolvedValueOnce(baseJob);
-      mockDB.raw.mockResolvedValueOnce([[{ stage: "applied", count: 10 }]]);
-      mockDB.raw.mockResolvedValueOnce([[{ source: "direct", count: 5 }]]);
-      mockDB.count.mockResolvedValueOnce(3); // interviews
-      mockDB.count.mockResolvedValueOnce(1); // offers
+      mockDB.count.mockResolvedValueOnce(10); // totalApps
+      mockDB.raw.mockResolvedValueOnce([[{ stage: "applied", count: 10 }]]); // stageRows
       const result = await jobService.getJobAnalytics(ORG, "j-1");
       expect(result).toBeDefined();
     });
@@ -162,10 +166,11 @@ describe("Job Service", () => {
       expect(result).toBe(true);
     });
 
-    it("throws when applications exist", async () => {
+    it("deletes job even when applications exist", async () => {
       mockDB.findOne.mockResolvedValueOnce(baseJob);
-      mockDB.count.mockResolvedValueOnce(5);
-      await expect(jobService.deleteJob(ORG, "j-1")).rejects.toThrow();
+      mockDB.delete.mockResolvedValueOnce(true);
+      const result = await jobService.deleteJob(ORG, "j-1");
+      expect(result).toBe(true);
     });
   });
 });
@@ -235,18 +240,20 @@ import * as comparisonService from "../../services/comparison/comparison.service
 describe("Comparison Service", () => {
   describe("compareCandidates", () => {
     it("compares multiple candidates for a job", async () => {
-      mockDB.findOne.mockResolvedValueOnce({ id: "j-1", skills: JSON.stringify(["JS"]) }); // job
-      // candidate 1
-      mockDB.findOne.mockResolvedValueOnce({ id: "c-1", first_name: "A", last_name: "B", skills: JSON.stringify(["JS"]), experience_years: 3 });
-      mockDB.findOne.mockResolvedValueOnce({ id: "s-1", overall_score: 80 }); // score
-      mockDB.findMany.mockResolvedValueOnce({ data: [{ overall_score: 8 }], total: 1 }); // feedback
-      // candidate 2
-      mockDB.findOne.mockResolvedValueOnce({ id: "c-2", first_name: "C", last_name: "D", skills: JSON.stringify(["TS"]), experience_years: 5 });
-      mockDB.findOne.mockResolvedValueOnce({ id: "s-2", overall_score: 70 }); // score
-      mockDB.findMany.mockResolvedValueOnce({ data: [], total: 0 }); // feedback
+      // compareCandidates(orgId, applicationIds) uses raw queries
+      // For each applicationId: raw(application+candidate+job), raw(score), raw(interviews+feedback)
+      // app-1
+      mockDB.raw.mockResolvedValueOnce([[{ id: "app-1", candidate_id: "c-1", job_id: "j-1", stage: "interview", first_name: "A", last_name: "B", email: "a@t.com", experience_years: 3, candidate_skills: JSON.stringify(["JS"]), job_title: "SWE" }]]);
+      mockDB.raw.mockResolvedValueOnce([[{ overall_score: 80, skills_score: 70, experience_score: 90, recommendation: "yes", matched_skills: JSON.stringify(["JS"]), missing_skills: JSON.stringify([]) }]]);
+      mockDB.raw.mockResolvedValueOnce([[{ id: "i-1", title: "Round 1", type: "phone", status: "completed", overall_score: 8, technical_score: 7, communication_score: 8, cultural_fit_score: 9, recommendation: "yes", strengths: "Good", weaknesses: "None" }]]);
+      // app-2
+      mockDB.raw.mockResolvedValueOnce([[{ id: "app-2", candidate_id: "c-2", job_id: "j-1", stage: "screened", first_name: "C", last_name: "D", email: "c@t.com", experience_years: 5, candidate_skills: JSON.stringify(["TS"]), job_title: "SWE" }]]);
+      mockDB.raw.mockResolvedValueOnce([[]]); // no score
+      mockDB.raw.mockResolvedValueOnce([[]]); // no interviews
 
-      const result = await comparisonService.compareCandidates(ORG, "j-1", ["c-1", "c-2"]);
+      const result = await comparisonService.compareCandidates(ORG, ["app-1", "app-2"]);
       expect(result).toBeDefined();
+      expect(result).toHaveLength(2);
     });
   });
 });

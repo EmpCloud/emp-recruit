@@ -259,7 +259,7 @@ describe("Portal Service", () => {
     it("sends portal link email", async () => {
       mockDB.findOne.mockResolvedValueOnce({ id: "c-1", email: "c@t.com", first_name: "A" });
       await portalService.sendPortalLink("c-1", ORG);
-      const { sendEmail } = await import("../email/email.service");
+      const { sendEmail } = await import("../../services/email/email.service");
       expect(sendEmail).toHaveBeenCalled();
     });
 
