@@ -83,7 +83,7 @@ describe("Health", () => {
 describe("Auth", () => {
   it("POST /auth/login with valid credentials returns tokens", async () => {
     const r = await api("POST", "/auth/login", {
-      email: "ananya@technova.in",
+      email: "meera@technova.in",
       password: "Welcome@123",
     });
     expect(r.status).toBe(200);
@@ -97,14 +97,14 @@ describe("Auth", () => {
 
   it("POST /auth/login with wrong password returns 401", async () => {
     const r = await api("POST", "/auth/login", {
-      email: "ananya@technova.in",
+      email: "meera@technova.in",
       password: "WrongPassword123",
     });
     expect([400, 401]).toContain(r.status);
   });
 
   it("POST /auth/login with missing fields returns validation error", async () => {
-    const r = await api("POST", "/auth/login", { email: "ananya@technova.in" });
+    const r = await api("POST", "/auth/login", { email: "meera@technova.in" });
     expect([400, 401, 422]).toContain(r.status);
   });
 

@@ -5,7 +5,8 @@
 
 import { describe, it, expect, beforeAll } from "vitest";
 
-const BASE = "http://localhost:4500/api/v1";
+const BASE_URL = process.env.RECRUIT_API_URL || "https://test-recruit.empcloud.com";
+const BASE = `${BASE_URL}/api/v1`;
 const UID = Date.now();
 
 let token: string;
@@ -65,7 +66,7 @@ async function apiNoAuth(method: string, path: string, body?: any) {
 beforeAll(async () => {
   // 1. Login
   const loginRes = await apiNoAuth("POST", "/auth/login", {
-    email: "ananya@technova.in",
+    email: "meera@technova.in",
     password: "Welcome@123",
   });
   expect(loginRes.status).toBe(200);

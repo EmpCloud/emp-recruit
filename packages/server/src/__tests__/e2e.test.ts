@@ -5,8 +5,9 @@
 
 import { describe, it, expect, beforeAll } from "vitest";
 
-const BASE = "http://localhost:4500/api/v1";
-const HEALTH_BASE = "http://localhost:4500";
+const BASE_URL = process.env.RECRUIT_API_URL || "https://test-recruit.empcloud.com";
+const BASE = `${BASE_URL}/api/v1`;
+const HEALTH_BASE = BASE_URL;
 let token: string;
 let refreshToken: string;
 
@@ -72,14 +73,14 @@ describe("Health", () => {
 describe("Auth", () => {
   it("POST /auth/login with valid credentials → 200, returns tokens", async () => {
     const r = await apiNoAuth("POST", "/auth/login", {
-      email: "ananya@technova.in",
+      email: "meera@technova.in",
       password: "Welcome@123",
     });
     expect(r.status).toBe(200);
     expect(r.body.success).toBe(true);
     expect(r.body.data.tokens.accessToken).toBeTruthy();
     expect(r.body.data.tokens.refreshToken).toBeTruthy();
-    expect(r.body.data.user.email).toBe("ananya@technova.in");
+    expect(r.body.data.user.email).toBe("meera@technova.in");
 
     // Store for all subsequent tests
     token = r.body.data.tokens.accessToken;
@@ -89,7 +90,7 @@ describe("Auth", () => {
 
   it("POST /auth/login with wrong password → 401", async () => {
     const r = await apiNoAuth("POST", "/auth/login", {
-      email: "ananya@technova.in",
+      email: "meera@technova.in",
       password: "WrongPassword!",
     });
     expect(r.status).toBe(401);
@@ -681,11 +682,12 @@ describe("SSO Flow", () => {
     // Step 1: Login to EMP Cloud to get a token
     let empCloudToken: string | null = null;
     try {
-      const empCloudRes = await fetch("http://localhost:3000/api/v1/auth/login", {
+      const empCloudUrl = process.env.EMPCLOUD_API_URL || "https://test-empcloud.empcloud.com";
+      const empCloudRes = await fetch(`${empCloudUrl}/api/v1/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          email: "ananya@technova.in",
+          email: "meera@technova.in",
           password: "Welcome@123",
         }),
       });
@@ -699,7 +701,7 @@ describe("SSO Flow", () => {
 
     if (!empCloudToken) {
       // Cannot test SSO if EMP Cloud is not available — mark as skipped info
-      console.log("EMP Cloud not available at localhost:3000, skipping SSO exchange test");
+      console.log("EMP Cloud not available, skipping SSO exchange test");
       return;
     }
 
