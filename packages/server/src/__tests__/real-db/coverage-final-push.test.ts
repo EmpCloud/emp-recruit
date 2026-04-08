@@ -11,7 +11,7 @@ let dbAvailable = false;
 
 beforeAll(async () => {
   try {
-    db = knexLib({ client: "mysql2", connection: { host: "localhost", port: 3306, user: "empcloud", password: "EmpCloud2026", database: "emp_recruit" } });
+    db = knexLib({ client: "mysql2", connection: { host: "localhost", port: 3306, user: "empcloud", password: process.env.DB_PASSWORD || "", database: "emp_recruit" } });
     await db.raw("SELECT 1");
     dbAvailable = true;
   } catch {

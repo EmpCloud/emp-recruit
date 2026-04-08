@@ -8,13 +8,13 @@
 process.env.DB_HOST = "localhost";
 process.env.DB_PORT = "3306";
 process.env.DB_USER = "empcloud";
-process.env.DB_PASSWORD = "EmpCloud2026";
+process.env.DB_PASSWORD = process.env.DB_PASSWORD || "";
 process.env.DB_NAME = "emp_recruit";
 process.env.DB_PROVIDER = "mysql";
 process.env.EMPCLOUD_DB_HOST = "localhost";
 process.env.EMPCLOUD_DB_PORT = "3306";
 process.env.EMPCLOUD_DB_USER = "empcloud";
-process.env.EMPCLOUD_DB_PASSWORD = "EmpCloud2026";
+process.env.EMPCLOUD_DB_PASSWORD = process.env.EMPCLOUD_DB_PASSWORD || "";
 process.env.EMPCLOUD_DB_NAME = "empcloud";
 process.env.NODE_ENV = "test";
 process.env.JWT_SECRET = "test-jwt-secret-cov-100";
@@ -34,7 +34,7 @@ beforeAll(async () => {
   try {
     db = knexLib({
       client: "mysql2",
-      connection: { host: "localhost", port: 3306, user: "empcloud", password: "EmpCloud2026", database: "emp_recruit" },
+      connection: { host: "localhost", port: 3306, user: "empcloud", password: process.env.DB_PASSWORD || "", database: "emp_recruit" },
       pool: { min: 0, max: 3 },
     });
     await db.raw("SELECT 1");
