@@ -61,6 +61,16 @@ export async function submitReferral(
     } as Partial<Candidate>);
   }
 
+  // #1361 — Prevent duplicate applications for the same candidate/job
+  const existingApplication = await db.findOne<Application>("applications", {
+    organization_id: orgId,
+    job_id: data.job_id,
+    candidate_id: candidate.id,
+  });
+  if (existingApplication) {
+    throw new ValidationError("You have already applied for this job");
+  }
+
   // Create application linked to referral
   const application = await db.create<Application>("applications", {
     organization_id: orgId,

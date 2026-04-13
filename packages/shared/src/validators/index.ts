@@ -57,7 +57,13 @@ export const createJobSchema = z.object({
   skills: z.array(z.string()).optional(),
   hiring_manager_id: z.number().int().optional(),
   max_applications: z.number().int().min(1).optional(),
-  closes_at: z.string().datetime().optional(),
+  // #1354 — Accept both ISO datetime and YYYY-MM-DD date strings
+  closes_at: z
+    .string()
+    .refine((val) => !val || !isNaN(Date.parse(val)), {
+      message: "Invalid date format",
+    })
+    .optional(),
 });
 
 export const updateJobSchema = createJobSchema.partial();
