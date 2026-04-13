@@ -39,9 +39,12 @@ export function InternalJobsPage() {
   const jobsQuery = useQuery({
     queryKey: ["internal-jobs"],
     queryFn: async () => {
+      // #1360 — Backend parameter is perPage, not limit. Previously sending
+      // limit: 100 was silently dropped and the endpoint fell back to the
+      // default perPage=20, so only 20 jobs showed even when 33 existed.
       const res = await apiGet<{ data: JobPosting[] }>("/jobs", {
         status: "open",
-        limit: 100,
+        perPage: 100,
       });
       return res.data?.data || [];
     },
