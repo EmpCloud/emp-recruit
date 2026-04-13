@@ -305,7 +305,16 @@ export function JobDetailPage() {
               </span>
               {(job.salary_min || job.salary_max) && (
                 <span className="inline-flex items-center gap-1">
-                  <DollarSign className="h-4 w-4" />
+                  {/* #1359 — Show the currency's actual symbol, not always $ */}
+                  <span className="text-base font-semibold">
+                    {job.salary_currency === "INR"
+                      ? "₹"
+                      : job.salary_currency === "EUR"
+                      ? "€"
+                      : job.salary_currency === "GBP"
+                      ? "£"
+                      : "$"}
+                  </span>
                   {job.salary_min?.toLocaleString()} - {job.salary_max?.toLocaleString()} {job.salary_currency}
                 </span>
               )}
