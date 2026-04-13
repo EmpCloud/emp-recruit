@@ -27,13 +27,13 @@ router.post(
         id: appId,
         organization_id: orgId,
       });
-      if (!app) throw new NotFoundError("Application", appId);
+      if (!app) throw new NotFoundError("Application", appId as string);
 
       const result = await scoringService.scoreCandidate(
         orgId,
         app.candidate_id,
         app.job_id,
-        appId,
+        appId as string,
       );
 
       return sendSuccess(res, result);
@@ -48,7 +48,7 @@ router.post(
   "/jobs/:jobId/batch-score",
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const jobId = req.params.jobId;
+      const jobId = req.params.jobId as string;
       if (!jobId) throw new ValidationError("Job ID is required");
 
       const orgId = req.user!.empcloudOrgId;
@@ -66,7 +66,7 @@ router.get(
   "/applications/:appId",
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const appId = req.params.appId;
+      const appId = req.params.appId as string;
       if (!appId) throw new ValidationError("Application ID is required");
 
       const orgId = req.user!.empcloudOrgId;
@@ -88,7 +88,7 @@ router.get(
   "/jobs/:jobId/rankings",
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const jobId = req.params.jobId;
+      const jobId = req.params.jobId as string;
       if (!jobId) throw new ValidationError("Job ID is required");
 
       const orgId = req.user!.empcloudOrgId;
@@ -132,7 +132,7 @@ router.post(
       const db = getDB();
       const app = await db.findOne<any>("applications", { id: appId, organization_id: orgId });
       if (!app) throw new NotFoundError("Application", appId);
-      const result = await scoringService.scoreCandidate(orgId, app.candidate_id, app.job_id);
+      const result = await scoringService.scoreCandidate(orgId, app.candidate_id, app.job_id, String(appId));
       return sendSuccess(res, result);
     } catch (err) {
       next(err);

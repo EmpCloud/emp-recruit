@@ -67,7 +67,7 @@ router.put(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const orgId = req.user!.empcloudOrgId;
-      const stage = await pipelineService.updateStage(orgId, req.params.id, req.body);
+      const stage = await pipelineService.updateStage(orgId, req.params.id as string, req.body);
       sendSuccess(res, stage);
     } catch (err) {
       next(err);
@@ -82,7 +82,7 @@ router.delete(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const orgId = req.user!.empcloudOrgId;
-      await pipelineService.deleteStage(orgId, req.params.id);
+      await pipelineService.deleteStage(orgId, req.params.id as string);
       sendSuccess(res, { deleted: true });
     } catch (err) {
       next(err);

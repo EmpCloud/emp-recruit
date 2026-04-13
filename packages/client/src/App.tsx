@@ -76,7 +76,7 @@ function SSOGate({ children }: { children: React.ReactNode }) {
 
         if (cancelled) return;
 
-        const { user, tokens } = res.data;
+        const { user, tokens } = res.data!;
         login(user, tokens);
 
         // Redirect to dashboard after SSO login

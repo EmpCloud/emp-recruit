@@ -226,7 +226,7 @@ export async function approve(
   await db.update("offer_approvers", approver.id, {
     status: "approved",
     notes: comment || null,
-    acted_at: new Date(),
+    acted_at: new Date().toISOString(),
   });
 
   // Check if all approvers have approved
@@ -240,7 +240,7 @@ export async function approve(
     return db.update<Offer>("offers", offerId, {
       status: "approved" as OfferStatus,
       approved_by: userId,
-      approved_at: new Date(),
+      approved_at: new Date().toISOString(),
     });
   }
 
@@ -275,7 +275,7 @@ export async function reject(
   await db.update("offer_approvers", approver.id, {
     status: "rejected",
     notes: comment || null,
-    acted_at: new Date(),
+    acted_at: new Date().toISOString(),
   });
 
   // Mark entire offer as rejected (any single rejection rejects the offer)
@@ -295,7 +295,7 @@ export async function sendOffer(orgId: number, id: string): Promise<Offer> {
 
   return db.update<Offer>("offers", id, {
     status: "sent" as OfferStatus,
-    sent_at: new Date(),
+    sent_at: new Date().toISOString(),
   });
 }
 
@@ -328,7 +328,7 @@ export async function acceptOffer(orgId: number, id: string, notes?: string): Pr
   const updated = await db.update<Offer>("offers", id, {
     status: "accepted" as OfferStatus,
     notes: notes || offer.notes,
-    responded_at: new Date(),
+    responded_at: new Date().toISOString(),
   });
 
   // Move application to hired stage
@@ -370,6 +370,6 @@ export async function declineOffer(orgId: number, id: string, notes?: string): P
   return db.update<Offer>("offers", id, {
     status: "declined" as OfferStatus,
     notes: notes || offer.notes,
-    responded_at: new Date(),
+    responded_at: new Date().toISOString(),
   });
 }

@@ -255,7 +255,7 @@ export async function sendOfferLetter(
 
   // Update sent_at
   const updated = await db.update<GeneratedOfferLetter>("generated_offer_letters", letter.id, {
-    sent_at: new Date(),
+    sent_at: new Date().toISOString(),
   } as Partial<GeneratedOfferLetter>);
 
   logger.info(`Offer letter for offer ${offerId} sent to ${candidate.email}`);

@@ -101,7 +101,7 @@ export function OnboardingDetailPage() {
   }
 
   function cycleStatus(task: OnboardingTask) {
-    const order: OnboardingStatus[] = ["not_started", "in_progress", "completed"];
+    const order = ["not_started", "in_progress", "completed"] as OnboardingStatus[];
     const currentIdx = order.indexOf(task.status);
     const nextStatus = order[(currentIdx + 1) % order.length];
     updateTaskStatus.mutate({ taskId: task.id, status: nextStatus });

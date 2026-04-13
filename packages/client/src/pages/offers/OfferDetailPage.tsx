@@ -225,7 +225,7 @@ export function OfferDetailPage() {
           {offer.status === "pending_approval" && (
             <>
               <button
-                onClick={() => approveOffer.mutate()}
+                onClick={() => approveOffer.mutate(undefined)}
                 disabled={approveOffer.isPending}
                 className="inline-flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50 transition-colors"
               >
@@ -233,7 +233,7 @@ export function OfferDetailPage() {
                 Approve
               </button>
               <button
-                onClick={() => rejectOffer.mutate()}
+                onClick={() => rejectOffer.mutate(undefined)}
                 disabled={rejectOffer.isPending}
                 className="inline-flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50 transition-colors"
               >

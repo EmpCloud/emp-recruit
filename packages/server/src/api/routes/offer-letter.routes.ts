@@ -60,7 +60,7 @@ router.post(
       const userId = req.user!.empcloudUserId;
       const { offerId } = req.params;
       const { templateId } = req.body;
-      const letter = await offerLetterService.generateOfferLetter(orgId, offerId, templateId, userId);
+      const letter = await offerLetterService.generateOfferLetter(orgId, offerId as string, templateId, userId);
       sendSuccess(res, letter, 201);
     } catch (err) {
       next(err);
@@ -74,7 +74,7 @@ router.get(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const orgId = req.user!.empcloudOrgId;
-      const letter = await offerLetterService.getOfferLetter(orgId, req.params.offerId);
+      const letter = await offerLetterService.getOfferLetter(orgId, req.params.offerId as string);
       sendSuccess(res, letter);
     } catch (err) {
       next(err);
@@ -89,7 +89,7 @@ router.post(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const orgId = req.user!.empcloudOrgId;
-      const letter = await offerLetterService.sendOfferLetter(orgId, req.params.offerId);
+      const letter = await offerLetterService.sendOfferLetter(orgId, req.params.offerId as string);
       sendSuccess(res, letter);
     } catch (err) {
       next(err);

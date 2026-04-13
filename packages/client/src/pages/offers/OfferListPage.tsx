@@ -16,7 +16,7 @@ import type { Offer, OfferStatus, PaginatedResponse } from "@emp-recruit/shared"
 
 type EnrichedOffer = Offer & { candidate_name: string; job_title_display: string };
 
-const STATUS_TABS: { label: string; value: OfferStatus | "all" }[] = [
+const STATUS_TABS: { label: string; value: string }[] = [
   { label: "All", value: "all" },
   { label: "Draft", value: "draft" },
   { label: "Pending Approval", value: "pending_approval" },
@@ -66,7 +66,7 @@ function formatDate(dateStr: string) {
 }
 
 export function OfferListPage() {
-  const [activeTab, setActiveTab] = useState<OfferStatus | "all">("all");
+  const [activeTab, setActiveTab] = useState<string>("all");
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
 

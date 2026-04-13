@@ -100,15 +100,15 @@ export async function scheduleInterview(
     type: data.type,
     round: data.round,
     title: data.title,
-    scheduled_at: new Date(data.scheduled_at),
+    scheduled_at: new Date(data.scheduled_at).toISOString(),
     duration_minutes: data.duration_minutes,
     location: data.location || null,
     meeting_link: data.meeting_link || null,
     status: "scheduled" as InterviewStatus,
     notes: data.notes || null,
     created_by: data.created_by,
-    created_at: now,
-    updated_at: now,
+    created_at: now.toISOString(),
+    updated_at: now.toISOString(),
   });
 
   // Create panelists
@@ -120,7 +120,7 @@ export async function scheduleInterview(
         interview_id: interviewId,
         user_id: p.user_id,
         role: p.role,
-        created_at: now,
+        created_at: now.toISOString(),
       });
       panelists.push(panelist);
     }
@@ -325,7 +325,7 @@ export async function changeStatus(
 
   const updated = await db.update<Interview>("interviews", id, {
     status,
-    updated_at: new Date(),
+    updated_at: new Date().toISOString(),
   });
 
   return updated;
@@ -365,7 +365,7 @@ export async function addPanelist(
     interview_id: interviewId,
     user_id: userId,
     role,
-    created_at: new Date(),
+    created_at: new Date().toISOString(),
   });
 
   return panelist;
@@ -451,8 +451,8 @@ export async function submitFeedback(
     strengths: data.strengths || null,
     weaknesses: data.weaknesses || null,
     notes: data.notes || null,
-    submitted_at: now,
-    created_at: now,
+    submitted_at: now.toISOString(),
+    created_at: now.toISOString(),
   });
 
   return feedback;
@@ -600,7 +600,7 @@ export async function generateMeetingLink(
 
   await db.update<Interview>("interviews", interviewId, {
     meeting_link: meetingLink,
-    updated_at: new Date(),
+    updated_at: new Date().toISOString(),
   });
 
   logger.info(`Meeting link generated for interview ${interviewId}: ${meetingLink}`);

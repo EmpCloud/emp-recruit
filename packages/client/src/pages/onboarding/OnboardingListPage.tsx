@@ -28,7 +28,7 @@ interface EnrichedChecklist {
   progress: { total: number; completed: number; percentage: number };
 }
 
-const STATUS_TABS: { label: string; value: OnboardingStatus | "all" }[] = [
+const STATUS_TABS: { label: string; value: string }[] = [
   { label: "All", value: "all" },
   { label: "Not Started", value: "not_started" },
   { label: "In Progress", value: "in_progress" },
@@ -67,7 +67,7 @@ function ProgressBar({ percentage }: { percentage: number }) {
 }
 
 export function OnboardingListPage() {
-  const [activeTab, setActiveTab] = useState<OnboardingStatus | "all">("all");
+  const [activeTab, setActiveTab] = useState<string>("all");
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
 
