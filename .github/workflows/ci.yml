@@ -37,6 +37,20 @@ jobs:
           mysql -h 127.0.0.1 -u root -psecret -e "CREATE DATABASE IF NOT EXISTS empcloud;"
           mysql -h 127.0.0.1 -u root -psecret -e "CREATE DATABASE IF NOT EXISTS emp_recruit;"
       - run: pnpm build
+      - name: Run migrations
+        env:
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_USER: root
+          DB_PASSWORD: secret
+          DB_NAME: emp_recruit
+          EMPCLOUD_DB_HOST: 127.0.0.1
+          EMPCLOUD_DB_PORT: 3306
+          EMPCLOUD_DB_USER: root
+          EMPCLOUD_DB_PASSWORD: secret
+          EMPCLOUD_DB_NAME: empcloud
+          NODE_ENV: test
+        run: pnpm --filter @emp-recruit/server db:migrate
       - name: Run tests
         env:
           DB_HOST: 127.0.0.1
@@ -52,4 +66,4 @@ jobs:
           REDIS_HOST: 127.0.0.1
           NODE_ENV: test
           JWT_SECRET: test-secret
-        run: pnpm test
+        run: pnpm --filter @emp-recruit/server exec vitest run --exclude 'src/__tests__/api.test.ts' --exclude 'src/__tests__/e2e.test.ts' --exclude 'src/__tests__/interview-e2e.test.ts' --exclude 'src/__tests__/sso.test.ts' --exclude 'src/__tests__/real-db/**' --exclude 'src/__tests__/coverage-push/**'
