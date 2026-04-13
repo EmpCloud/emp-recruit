@@ -104,6 +104,7 @@ export async function listApplications(
     job_id?: string;
     stage?: string;
     candidate_id?: string;
+    search?: string;
     sort?: string;
     order?: "asc" | "desc";
   },
@@ -129,11 +130,22 @@ export async function listApplications(
     conditions.push("a.candidate_id = ?");
     queryParams.push(params.candidate_id);
   }
+  // #1365 — Support candidate name/email search from Schedule Interview UI
+  if (params.search) {
+    const like = `%${params.search}%`;
+    conditions.push(
+      "(c.first_name LIKE ? OR c.last_name LIKE ? OR c.email LIKE ? OR CONCAT(c.first_name, ' ', c.last_name) LIKE ? OR j.title LIKE ?)"
+    );
+    queryParams.push(like, like, like, like, like);
+  }
 
   const whereClause = conditions.join(" AND ");
 
   const countRows = await db.raw<any[][]>(
-    `SELECT COUNT(*) as total FROM applications a WHERE ${whereClause}`,
+    `SELECT COUNT(*) as total FROM applications a
+     LEFT JOIN candidates c ON c.id = a.candidate_id
+     LEFT JOIN job_postings j ON j.id = a.job_id
+     WHERE ${whereClause}`,
     queryParams,
   );
   const total = Number(countRows[0]?.[0]?.total ?? 0);
