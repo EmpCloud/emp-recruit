@@ -385,6 +385,20 @@ function EmailTemplateSettings() {
                 placeholder="<p>Dear {{candidateName}},</p>..."
                 className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm font-mono focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
               />
+              {/* #31 — live rendered preview under the raw HTML textarea so
+                  users can see the formatted output instead of thinking the
+                  raw `<p>...</p>` markup is what gets displayed. */}
+              {form.body && (
+                <div className="mt-3 rounded-lg border border-gray-200 bg-gray-50 p-3">
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
+                    Preview
+                  </p>
+                  <div
+                    className="prose prose-sm max-w-none rounded-md bg-white p-3"
+                    dangerouslySetInnerHTML={{ __html: form.body }}
+                  />
+                </div>
+              )}
             </div>
             <div className="flex items-center gap-2">
               <input
@@ -448,7 +462,13 @@ function EmailTemplateSettings() {
                 <p className="mt-0.5 text-xs text-gray-500">
                   Trigger: <span className="font-mono">{t.trigger}</span>
                 </p>
-                <p className="mt-0.5 text-xs text-gray-400 truncate">{t.subject}</p>
+                {/* #33 — subjects occasionally include HTML tags in the
+                    stored value (esp. if someone pasted rich text). Strip
+                    tags for the list preview so raw markup doesn't leak into
+                    the UI. */}
+                <p className="mt-0.5 text-xs text-gray-400 truncate">
+                  {(t.subject || "").replace(/<[^>]+>/g, "")}
+                </p>
               </div>
               <div className="flex items-center gap-2">
                 <button
