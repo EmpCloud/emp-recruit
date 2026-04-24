@@ -1,10 +1,12 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Save, Loader2, Search } from "lucide-react";
 import { apiGet, apiPost } from "@/api/client";
 import toast from "react-hot-toast";
 import type { Application, PaginatedResponse } from "@emp-recruit/shared";
+
+interface DepartmentOption { id: number; name: string }
 
 type ApplicationRow = Application & { candidate_name: string; job_title: string };
 
@@ -55,6 +57,17 @@ export function OfferCreatePage() {
       }),
   });
   const applications = appsData?.data?.data || [];
+
+  // #23 — department dropdown from the EmpCloud master DB. Falls back to
+  // free-text if the org hasn't configured any departments (or if the
+  // endpoint isn't available yet on the deployed backend).
+  const { data: departmentsData } = useQuery({
+    queryKey: ["org-departments"],
+    queryFn: () =>
+      apiGet<DepartmentOption[]>("/organizations/departments").catch(() => ({ data: [] as DepartmentOption[] })),
+    retry: false,
+  });
+  const departments = useMemo(() => departmentsData?.data ?? [], [departmentsData]);
 
   const createMutation = useMutation({
     mutationFn: (data: Record<string, any>) => apiPost<{ id: string }>("/offers", data),
@@ -214,13 +227,29 @@ export function OfferCreatePage() {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Department</label>
-              <input
-                type="text"
-                value={form.department}
-                onChange={(e) => setForm((p) => ({ ...p, department: e.target.value }))}
-                placeholder="e.g. Engineering"
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm placeholder:text-gray-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-              />
+              {/* #23 — dropdown when the org has entries; free-text fallback
+                  so new tenants (or older deploys without /organizations/
+                  departments) aren't blocked. */}
+              {departments.length > 0 ? (
+                <select
+                  value={form.department}
+                  onChange={(e) => setForm((p) => ({ ...p, department: e.target.value }))}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                >
+                  <option value="">Select department</option>
+                  {departments.map((d) => (
+                    <option key={d.id} value={d.name}>{d.name}</option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  value={form.department}
+                  onChange={(e) => setForm((p) => ({ ...p, department: e.target.value }))}
+                  placeholder="e.g. Engineering"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm placeholder:text-gray-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                />
+              )}
             </div>
           </div>
         </div>
