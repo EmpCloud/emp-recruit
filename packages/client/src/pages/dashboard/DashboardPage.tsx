@@ -196,8 +196,10 @@ export function DashboardPage() {
         <div className="rounded-lg border border-gray-200 bg-white p-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold text-gray-900">Recent Applications</h2>
+            {/* #11 — was `/jobs`; Candidates is the closest list view for
+                applications until a dedicated `/applications` page exists. */}
             <Link
-              to="/jobs"
+              to="/candidates"
               className="text-sm text-brand-600 hover:text-brand-700 inline-flex items-center gap-1"
             >
               View all <ChevronRight className="h-4 w-4" />
@@ -208,10 +210,14 @@ export function DashboardPage() {
             <p className="py-8 text-center text-sm text-gray-500">No applications yet.</p>
           ) : (
             <div className="space-y-3">
+              {/* #28 — each row now links to the candidate's detail page.
+                  Falls back to the job detail if candidate_id is somehow
+                  missing on legacy rows. */}
               {recentApps.map((app: any) => (
-                <div
+                <Link
                   key={app.id}
-                  className="flex items-center justify-between rounded-lg border border-gray-100 p-3 hover:bg-gray-50 transition-colors"
+                  to={app.candidate_id ? `/candidates/${app.candidate_id}` : `/jobs/${app.job_id}`}
+                  className="flex items-center justify-between rounded-lg border border-gray-100 p-3 hover:bg-gray-50 hover:border-brand-200 transition-colors"
                 >
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium text-gray-900 truncate">
@@ -233,7 +239,7 @@ export function DashboardPage() {
                       {formatDate(app.applied_at)}
                     </span>
                   </div>
-                </div>
+                </Link>
               ))}
             </div>
           )}
