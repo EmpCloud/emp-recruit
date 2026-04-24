@@ -275,7 +275,14 @@ export function OnboardingTemplatesPage() {
                       <p className="mt-0.5 text-sm text-gray-500">{template.description}</p>
                     )}
                   </div>
-                  <span className="text-sm text-gray-500">{template.task_count} tasks</span>
+                  {/* #24 — show a friendly "No tasks" label instead of a bare
+                      "0 tasks" string that rendered as a stray "0" in the
+                      card header. Only count + label when > 0. */}
+                  <span className="text-sm text-gray-500">
+                    {template.task_count > 0
+                      ? `${template.task_count} task${template.task_count === 1 ? "" : "s"}`
+                      : "No tasks"}
+                  </span>
                   <button
                     onClick={() => startEdit(template)}
                     className="rounded p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
