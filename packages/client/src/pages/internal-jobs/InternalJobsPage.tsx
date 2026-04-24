@@ -50,6 +50,19 @@ export function InternalJobsPage() {
     },
   });
 
+  // #29 — track which jobs the signed-in employee has already applied
+  // to (via `/referrals` which server-side filters to own rows for
+  // employees) so the button flips to "Applied" instead of letting
+  // them re-submit.
+  const myReferralsQuery = useQuery({
+    queryKey: ["my-referrals"],
+    queryFn: async () => {
+      const res = await apiGet<{ data: { job_id: string }[] }>("/referrals", { limit: 200 });
+      return res.data?.data || [];
+    },
+  });
+  const appliedJobIds = new Set((myReferralsQuery.data || []).map((r) => r.job_id));
+
   const applyMutation = useMutation({
     mutationFn: async ({ jobId }: { jobId: string }) => {
       return apiPost("/referrals", {
@@ -66,6 +79,8 @@ export function InternalJobsPage() {
       setSelectedJob(null);
       setCoverLetter("");
       queryClient.invalidateQueries({ queryKey: ["internal-jobs"] });
+      // #29 — refetch the user's referrals so the button flips to Applied.
+      queryClient.invalidateQueries({ queryKey: ["my-referrals"] });
     },
     onError: (err: any) => {
       toast.error(
@@ -149,13 +164,27 @@ export function InternalJobsPage() {
                     </p>
                   )}
                 </div>
-                <button
-                  onClick={() => setSelectedJob(job)}
-                  className="shrink-0 inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
-                >
-                  <Send className="h-4 w-4" />
-                  Apply
-                </button>
+                {appliedJobIds.has(job.id) ? (
+                  // #29 — user has already applied to this job; show a
+                  // disabled "Applied" state instead of the Apply button.
+                  <button
+                    type="button"
+                    disabled
+                    aria-disabled="true"
+                    className="shrink-0 inline-flex items-center gap-2 rounded-lg bg-green-50 text-green-700 border border-green-200 px-4 py-2 text-sm font-medium cursor-default"
+                  >
+                    <CheckCircle className="h-4 w-4" />
+                    Applied
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => setSelectedJob(job)}
+                    className="shrink-0 inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
+                  >
+                    <Send className="h-4 w-4" />
+                    Apply
+                  </button>
+                )}
               </div>
             </div>
           ))}
