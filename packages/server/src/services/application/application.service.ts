@@ -154,7 +154,15 @@ export async function listApplications(
   const sortOrder = params.order ?? "desc";
 
   const dataRows = await db.raw<any[][]>(
-    `SELECT a.*, c.first_name as candidate_first_name, c.last_name as candidate_last_name, c.email as candidate_email, j.title as job_title
+    // #16 — also expose a concatenated candidate_name so the Schedule
+    // Interview picker (and any future UI that wants a display label)
+    // doesn't have to stitch first/last together on the client.
+    `SELECT a.*,
+            c.first_name AS candidate_first_name,
+            c.last_name  AS candidate_last_name,
+            c.email      AS candidate_email,
+            TRIM(CONCAT(COALESCE(c.first_name,''), ' ', COALESCE(c.last_name,''))) AS candidate_name,
+            j.title      AS job_title
      FROM applications a
      LEFT JOIN candidates c ON c.id = a.candidate_id
      LEFT JOIN job_postings j ON j.id = a.job_id
