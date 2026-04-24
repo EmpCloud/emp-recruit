@@ -19,6 +19,13 @@ export default defineConfig({
         target: "http://localhost:4500",
         changeOrigin: true,
       },
+      // #27 — static uploads (resumes, offer letters) are served from the
+      // backend at /uploads. Without this proxy, <a href="/uploads/...">
+      // resolves to the Vite origin and 404s.
+      "/uploads": {
+        target: "http://localhost:4500",
+        changeOrigin: true,
+      },
     },
   },
 });

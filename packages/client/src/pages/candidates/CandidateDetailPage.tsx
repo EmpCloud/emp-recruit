@@ -173,12 +173,22 @@ export function CandidateDetailPage() {
             </div>
           </div>
 
-          {/* Resume */}
+          {/* Resume — #27 — the server stores resume_path as e.g.
+              "/uploads/resumes/<file>" (leading-slash relative). In dev
+              the Vite server now proxies /uploads to the backend. The
+              extra normalization below is belt-and-braces for paths that
+              were stored without a leading slash. */}
           {candidate.resume_path && (
             <div className="rounded-lg border border-gray-200 bg-white p-6">
               <h2 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-3">Resume</h2>
               <a
-                href={candidate.resume_path}
+                href={
+                  /^https?:\/\//.test(candidate.resume_path)
+                    ? candidate.resume_path
+                    : candidate.resume_path.startsWith("/")
+                      ? candidate.resume_path
+                      : "/" + candidate.resume_path
+                }
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
