@@ -85,9 +85,35 @@ export function OfferDetailPage() {
 
   const offer = data?.data;
 
+  // #21 — Submit for Approval state. The backend rejects an empty
+  // approver_ids array, so we now gather selected approvers from a modal
+  // picker and surface errors via toast.
+  const [showApproverModal, setShowApproverModal] = useState(false);
+  const [selectedApproverIds, setSelectedApproverIds] = useState<number[]>([]);
+
+  const { data: usersData } = useQuery({
+    queryKey: ["org-users"],
+    queryFn: () =>
+      apiGet<{ id: number; first_name: string; last_name: string; email: string; role: string; designation: string | null }[]>(
+        "/organizations/users",
+      ),
+    enabled: showApproverModal,
+  });
+  const orgUsers = usersData?.data ?? [];
+
   const submitApproval = useMutation({
-    mutationFn: () => apiPost(`/offers/${id}/submit-approval`, { approver_ids: [] }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["offer", id] }),
+    mutationFn: (approver_ids: number[]) =>
+      apiPost(`/offers/${id}/submit-approval`, { approver_ids }),
+    onSuccess: () => {
+      toast.success("Offer submitted for approval");
+      setShowApproverModal(false);
+      setSelectedApproverIds([]);
+      queryClient.invalidateQueries({ queryKey: ["offer", id] });
+    },
+    onError: (err: any) => {
+      const msg = err?.response?.data?.error?.message || "Failed to submit for approval";
+      toast.error(msg);
+    },
   });
 
   const sendOffer = useMutation({
@@ -246,14 +272,19 @@ export function OfferDetailPage() {
         <div className="flex items-center gap-2">
           {offer.status === "draft" && (
             <>
+              {/* #21 — was linking to `/offers/:id` (the same detail page);
+                  now routes to a real edit page. */}
               <Link
-                to={`/offers/${id}`}
+                to={`/offers/${id}/edit`}
                 className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
               >
                 Edit
               </Link>
+              {/* #21 — was POSTing { approver_ids: [] }, which the server
+                  rejected with "At least one approver is required". Open a
+                  modal to pick approvers first. */}
               <button
-                onClick={() => submitApproval.mutate()}
+                onClick={() => setShowApproverModal(true)}
                 disabled={submitApproval.isPending}
                 className="inline-flex items-center gap-2 rounded-lg bg-yellow-600 px-4 py-2 text-sm font-medium text-white hover:bg-yellow-700 disabled:opacity-50 transition-colors"
               >
@@ -542,7 +573,9 @@ export function OfferDetailPage() {
         <div className="space-y-6">
           <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
             <h2 className="text-lg font-semibold text-gray-900">Approval Workflow</h2>
-            {offer.approvers.length === 0 ? (
+            {/* #22 — defensive: if the API ever returns offer without
+                `approvers` (e.g. older row shape), don't crash the render. */}
+            {(!Array.isArray(offer.approvers) || offer.approvers.length === 0) ? (
               <div className="mt-4 flex flex-col items-center justify-center py-8">
                 <Clock className="h-8 w-8 text-gray-300" />
                 <p className="mt-2 text-sm text-gray-500 text-center">
@@ -551,7 +584,7 @@ export function OfferDetailPage() {
               </div>
             ) : (
               <div className="mt-4 space-y-3">
-                {offer.approvers.map((approver, idx) => {
+                {(offer.approvers ?? []).map((approver, idx) => {
                   const aStatus = APPROVER_STATUS[approver.status] || APPROVER_STATUS.pending;
                   return (
                     <div
@@ -637,6 +670,87 @@ export function OfferDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* #21 — Approver picker modal */}
+      {showApproverModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-xl bg-white shadow-xl">
+            <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
+              <h3 className="text-base font-semibold text-gray-900">Submit for Approval</h3>
+              <button
+                onClick={() => {
+                  setShowApproverModal(false);
+                  setSelectedApproverIds([]);
+                }}
+                className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="px-6 py-4">
+              <p className="mb-3 text-sm text-gray-500">
+                Pick one or more approvers. They'll review this offer before it can be sent.
+              </p>
+              {orgUsers.length === 0 ? (
+                <p className="py-4 text-center text-sm text-gray-400">Loading users...</p>
+              ) : (
+                <div className="max-h-64 overflow-y-auto rounded-lg border border-gray-200">
+                  {orgUsers.map((u) => (
+                    <label
+                      key={u.id}
+                      className="flex cursor-pointer items-center gap-3 border-b border-gray-100 px-3 py-2 last:border-b-0 hover:bg-gray-50"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedApproverIds.includes(u.id)}
+                        onChange={(e) =>
+                          setSelectedApproverIds((prev) =>
+                            e.target.checked ? [...prev, u.id] : prev.filter((x) => x !== u.id),
+                          )
+                        }
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-gray-900">
+                          {u.first_name} {u.last_name}
+                        </p>
+                        <p className="truncate text-xs text-gray-500">
+                          {u.designation || u.role} · {u.email}
+                        </p>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="flex justify-end gap-3 border-t border-gray-100 bg-gray-50 px-6 py-4 rounded-b-xl">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowApproverModal(false);
+                  setSelectedApproverIds([]);
+                }}
+                className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (selectedApproverIds.length === 0) {
+                    toast.error("Please pick at least one approver");
+                    return;
+                  }
+                  submitApproval.mutate(selectedApproverIds);
+                }}
+                disabled={submitApproval.isPending}
+                className="rounded-lg bg-yellow-600 px-4 py-2 text-sm font-medium text-white hover:bg-yellow-700 disabled:opacity-50"
+              >
+                {submitApproval.isPending ? "Submitting..." : "Submit"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
