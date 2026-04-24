@@ -92,32 +92,72 @@ export function OfferDetailPage() {
 
   const sendOffer = useMutation({
     mutationFn: () => apiPost(`/offers/${id}/send`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["offer", id] }),
+    onSuccess: () => {
+      toast.success("Offer sent to candidate");
+      queryClient.invalidateQueries({ queryKey: ["offer", id] });
+    },
+    onError: (err: any) => {
+      toast.error(err?.response?.data?.error?.message || "Failed to send offer");
+    },
   });
 
   const revokeOffer = useMutation({
     mutationFn: () => apiPost(`/offers/${id}/revoke`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["offer", id] }),
+    onSuccess: () => {
+      toast.success("Offer revoked");
+      queryClient.invalidateQueries({ queryKey: ["offer", id] });
+    },
+    onError: (err: any) => {
+      toast.error(err?.response?.data?.error?.message || "Failed to revoke offer");
+    },
   });
 
+  // #34 — approve/reject mutations previously had no onError handler, so
+  // a 403 ("You are not an approver for this offer") or 400 ("You have
+  // already acted on this offer") silently failed and the user thought
+  // the buttons were broken. Surface the server message via toast.
   const approveOffer = useMutation({
     mutationFn: (comment?: string) => apiPost(`/offers/${id}/approve`, { comment }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["offer", id] }),
+    onSuccess: () => {
+      toast.success("Offer approved");
+      queryClient.invalidateQueries({ queryKey: ["offer", id] });
+    },
+    onError: (err: any) => {
+      toast.error(err?.response?.data?.error?.message || "Failed to approve offer");
+    },
   });
 
   const rejectOffer = useMutation({
     mutationFn: (comment?: string) => apiPost(`/offers/${id}/reject`, { comment }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["offer", id] }),
+    onSuccess: () => {
+      toast.success("Offer rejected");
+      queryClient.invalidateQueries({ queryKey: ["offer", id] });
+    },
+    onError: (err: any) => {
+      toast.error(err?.response?.data?.error?.message || "Failed to reject offer");
+    },
   });
 
   const acceptOffer = useMutation({
     mutationFn: () => apiPost(`/offers/${id}/accept`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["offer", id] }),
+    onSuccess: () => {
+      toast.success("Offer accepted");
+      queryClient.invalidateQueries({ queryKey: ["offer", id] });
+    },
+    onError: (err: any) => {
+      toast.error(err?.response?.data?.error?.message || "Failed to accept offer");
+    },
   });
 
   const declineOffer = useMutation({
     mutationFn: () => apiPost(`/offers/${id}/decline`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["offer", id] }),
+    onSuccess: () => {
+      toast.success("Offer declined");
+      queryClient.invalidateQueries({ queryKey: ["offer", id] });
+    },
+    onError: (err: any) => {
+      toast.error(err?.response?.data?.error?.message || "Failed to decline offer");
+    },
   });
 
   // --- Offer Letter ---
