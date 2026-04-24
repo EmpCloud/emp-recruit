@@ -66,8 +66,24 @@ export function CandidateDetailPage() {
     );
   }
 
-  const skills = candidate.skills ? JSON.parse(candidate.skills) as string[] : [];
-  const tags = candidate.tags ? JSON.parse(candidate.tags) as string[] : [];
+  // #15 — mysql2 returns JSON columns as already-parsed arrays. Calling
+  // JSON.parse on an array throws, which crashed this page to blank after
+  // clicking a candidate. Handle array | string | null defensively.
+  const parseJsonArray = (v: unknown): string[] => {
+    if (!v) return [];
+    if (Array.isArray(v)) return v as string[];
+    if (typeof v === "string") {
+      try {
+        const parsed = JSON.parse(v);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  };
+  const skills = parseJsonArray(candidate.skills);
+  const tags = parseJsonArray(candidate.tags);
 
   return (
     <div className="space-y-6">
