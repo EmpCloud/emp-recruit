@@ -83,7 +83,8 @@ export function JobFormPage() {
         salary_min: j.salary_min?.toString() ?? "",
         salary_max: j.salary_max?.toString() ?? "",
         salary_currency: j.salary_currency,
-        remote_policy: "onsite", // default, can be extended
+        // #30 — preserve whatever the server has stored; default only if missing
+        remote_policy: (j as any).remote_policy || "onsite",
         requirements: j.requirements ?? "",
         benefits: j.benefits ?? "",
         skills: j.skills
@@ -149,6 +150,8 @@ export function JobFormPage() {
       description: form.description,
       employment_type: form.employment_type,
       salary_currency: form.salary_currency,
+      // #30 — always persist remote_policy; previously dropped on the floor.
+      remote_policy: form.remote_policy,
     };
 
     if (form.department) payload.department = form.department;

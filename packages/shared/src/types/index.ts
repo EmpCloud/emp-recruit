@@ -142,6 +142,7 @@ export interface JobPosting {
   created_by: number;
   created_at: string;
   updated_at: string;
+  remote_policy: string; // onsite | remote | hybrid (#30, #32)
 }
 
 export interface Candidate {

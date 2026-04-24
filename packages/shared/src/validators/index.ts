@@ -57,6 +57,9 @@ export const createJobSchema = z.object({
   skills: z.array(z.string()).optional(),
   hiring_manager_id: z.number().int().optional(),
   max_applications: z.number().int().min(1).optional(),
+  // #30 — remote policy (onsite / remote / hybrid). The frontend form has
+  // always had this select; now it actually gets stored.
+  remote_policy: z.enum(["onsite", "remote", "hybrid"]).default("onsite"),
   // #1354 — Accept both ISO datetime and YYYY-MM-DD date strings
   closes_at: z
     .string()
