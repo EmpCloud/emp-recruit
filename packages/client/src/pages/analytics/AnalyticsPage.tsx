@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
 import {
   Loader2,
   Briefcase,
@@ -108,10 +109,11 @@ export function AnalyticsPage() {
         </div>
       ) : overview ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <StatCard icon={Briefcase} label="Open Jobs" value={overview.openJobs} color="text-blue-600" bg="bg-blue-50" />
-          <StatCard icon={Users} label="Total Candidates" value={overview.totalCandidates} color="text-purple-600" bg="bg-purple-50" />
-          <StatCard icon={TrendingUp} label="Active Applications" value={overview.activeApplications} color="text-amber-600" bg="bg-amber-50" />
-          <StatCard icon={UserCheck} label="Hires" value={overview.recentHires} color="text-green-600" bg="bg-green-50" />
+          {/* #26 — cards now link to their respective detail lists. */}
+          <StatCard icon={Briefcase} label="Open Jobs" value={overview.openJobs} color="text-blue-600" bg="bg-blue-50" href="/jobs?status=open" />
+          <StatCard icon={Users} label="Total Candidates" value={overview.totalCandidates} color="text-purple-600" bg="bg-purple-50" href="/candidates" />
+          <StatCard icon={TrendingUp} label="Active Applications" value={overview.activeApplications} color="text-amber-600" bg="bg-amber-50" href="/candidates" />
+          <StatCard icon={UserCheck} label="Hires" value={overview.recentHires} color="text-green-600" bg="bg-green-50" href="/offers?status=accepted" />
         </div>
       ) : null}
 
@@ -231,24 +233,40 @@ function StatCard({
   value,
   color,
   bg,
+  href,
 }: {
   icon: any;
   label: string;
   value: number;
   color: string;
   bg: string;
+  href?: string;
 }) {
-  return (
-    <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-      <div className="flex items-center gap-3">
-        <div className={`rounded-lg p-2.5 ${bg}`}>
-          <Icon className={`h-5 w-5 ${color}`} />
-        </div>
-        <div>
-          <p className="text-sm text-gray-500">{label}</p>
-          <p className="text-2xl font-bold text-gray-900">{value}</p>
-        </div>
+  const content = (
+    <div className="flex items-center gap-3">
+      <div className={`rounded-lg p-2.5 ${bg}`}>
+        <Icon className={`h-5 w-5 ${color}`} />
+      </div>
+      <div>
+        <p className="text-sm text-gray-500">{label}</p>
+        <p className="text-2xl font-bold text-gray-900">{value}</p>
       </div>
     </div>
+  );
+
+  // #26 — when `href` is supplied, render the card as an interactive
+  // <Link> with hover affordance; otherwise fall back to the static div.
+  if (href) {
+    return (
+      <Link
+        to={href}
+        className="block rounded-xl border border-gray-200 bg-white p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:border-brand-300 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-brand-200"
+      >
+        {content}
+      </Link>
+    );
+  }
+  return (
+    <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">{content}</div>
   );
 }
