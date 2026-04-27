@@ -10,6 +10,9 @@ const OfferDetailPage = lazy(() =>
 const OfferCreatePage = lazy(() =>
   import("@/pages/offers/OfferCreatePage").then((m) => ({ default: m.OfferCreatePage })),
 );
+const OfferEditPage = lazy(() =>
+  import("@/pages/offers/OfferEditPage").then((m) => ({ default: m.OfferEditPage })),
+);
 const OfferLetterTemplatePage = lazy(() =>
   import("@/pages/offers/OfferLetterTemplatePage").then((m) => ({ default: m.OfferLetterTemplatePage })),
 );
@@ -19,6 +22,7 @@ export const offerRoutes = (
     <Route path="/offers" element={<OfferListPage />} />
     <Route path="/offers/new" element={<OfferCreatePage />} />
     <Route path="/offers/letter-templates" element={<OfferLetterTemplatePage />} />
+    <Route path="/offers/:id/edit" element={<OfferEditPage />} />
     <Route path="/offers/:id" element={<OfferDetailPage />} />
   </>
 );
