@@ -1,10 +1,16 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Save, Loader2 } from "lucide-react";
 import { apiGet, apiPost, apiPut } from "@/api/client";
 import type { JobPosting } from "@emp-recruit/shared";
 import toast from "react-hot-toast";
+
+// Today's date in YYYY-MM-DD for use as <input type="date" min> — #13.
+function todayIso() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
 
 const EMPLOYMENT_TYPES = [
   { value: "full_time", label: "Full Time" },
@@ -68,6 +74,21 @@ export function JobFormPage() {
     queryFn: () => apiGet<JobPosting>(`/jobs/${id}`),
     enabled: isEdit,
   });
+
+  // #12 — departments & locations from the EmpCloud master DB so they render
+  // as dropdowns instead of free-text. If either list is empty (org hasn't
+  // set any up yet) the field gracefully falls back to a plain text input.
+  const { data: departmentsData } = useQuery({
+    queryKey: ["org-departments"],
+    queryFn: () => apiGet<{ id: number; name: string }[]>("/organizations/departments"),
+  });
+  const { data: locationsData } = useQuery({
+    queryKey: ["org-locations"],
+    queryFn: () => apiGet<{ id: number; name: string }[]>("/organizations/locations"),
+  });
+  const departments = useMemo(() => departmentsData?.data ?? [], [departmentsData]);
+  const locations = useMemo(() => locationsData?.data ?? [], [locationsData]);
+  const minCloseDate = useMemo(() => todayIso(), []);
 
   useEffect(() => {
     if (existingJob?.data) {
@@ -143,6 +164,21 @@ export function JobFormPage() {
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+
+    // #13 — belt-and-braces past-date guard. The date input already has
+    // `min` set, but users who paste the date or use devtools shouldn't
+    // be able to slip a past deadline through.
+    if (form.closes_at && form.closes_at < minCloseDate) {
+      toast.error("Application deadline cannot be in the past");
+      return;
+    }
+
+    // #14 — description min length is 10 on the server. Fail fast with a
+    // human-readable message instead of surfacing a zod error.
+    if (form.description.trim().length < 10) {
+      toast.error("Description must be at least 10 characters");
+      return;
+    }
 
     const payload: Record<string, any> = {
       title: form.title,
@@ -228,14 +264,65 @@ export function JobFormPage() {
               onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))}
               rows={6}
               required
+              // #14 — backend enforces min length 10. Enforce client-side
+              // so the user gets immediate feedback instead of a confusing
+              // 400 from the server when they submit a 1-line description.
+              minLength={10}
               placeholder="Describe the role, responsibilities, and what success looks like..."
               className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm placeholder:text-gray-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
             />
+            <p className="mt-1 text-xs text-gray-400">Minimum 10 characters.</p>
           </div>
 
+          {/* #12 — Department & Location. Dropdowns when the org has
+              configured entries, free-text fallback otherwise. */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            {field("Department", "department", "text", { placeholder: "e.g. Engineering" })}
-            {field("Location", "location", "text", { placeholder: "e.g. Bengaluru, India" })}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Department</label>
+              {departments.length > 0 ? (
+                <select
+                  value={form.department}
+                  onChange={(e) => setForm((p) => ({ ...p, department: e.target.value }))}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                >
+                  <option value="">Select department</option>
+                  {departments.map((d) => (
+                    <option key={d.id} value={d.name}>{d.name}</option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  value={form.department}
+                  onChange={(e) => setForm((p) => ({ ...p, department: e.target.value }))}
+                  placeholder="e.g. Engineering"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm placeholder:text-gray-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                />
+              )}
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Location</label>
+              {locations.length > 0 ? (
+                <select
+                  value={form.location}
+                  onChange={(e) => setForm((p) => ({ ...p, location: e.target.value }))}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                >
+                  <option value="">Select location</option>
+                  {locations.map((l) => (
+                    <option key={l.id} value={l.name}>{l.name}</option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  value={form.location}
+                  onChange={(e) => setForm((p) => ({ ...p, location: e.target.value }))}
+                  placeholder="e.g. Bengaluru, India"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm placeholder:text-gray-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                />
+              )}
+            </div>
           </div>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -325,7 +412,18 @@ export function JobFormPage() {
           </div>
 
           {field("Skills (comma separated)", "skills", "text", { placeholder: "React, TypeScript, Node.js" })}
-          {field("Application Deadline", "closes_at", "date")}
+          {/* #13 — can't pick a deadline in the past. Enforced client-side
+              via the native min attribute; backend rejects Invalid dates too. */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Application Deadline</label>
+            <input
+              type="date"
+              value={form.closes_at}
+              onChange={(e) => setForm((p) => ({ ...p, closes_at: e.target.value }))}
+              min={minCloseDate}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+            />
+          </div>
         </div>
 
         {/* Actions */}

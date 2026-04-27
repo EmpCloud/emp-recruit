@@ -36,6 +36,7 @@ import { backgroundCheckRoutes } from "./api/routes/background-check.routes";
 import { jobDescriptionRoutes } from "./api/routes/job-description.routes";
 import { surveyRoutes } from "./api/routes/survey.routes";
 import { assessmentRoutes } from "./api/routes/assessment.routes";
+import { organizationRoutes } from "./api/routes/organization.routes";
 import { errorHandler } from "./api/middleware/error.middleware";
 import { apiLimiter, authLimiter } from "./api/middleware/rate-limit.middleware";
 import { swaggerUIHandler, openapiHandler } from "./api/docs";
@@ -111,6 +112,7 @@ v1.use("/jobs", jobDescriptionRoutes);
 v1.use("/job-descriptions", jobDescriptionRoutes); // alias — /job-descriptions/generate-description (#862 #863)
 v1.use("/surveys", surveyRoutes);
 v1.use("/assessments", assessmentRoutes);
+v1.use("/organizations", organizationRoutes);
 
 // Public routes (no auth required) — career pages, job listings, applications
 app.use("/api/v1/public", publicRoutes);
