@@ -56,6 +56,7 @@ export async function createJob(
     hiring_manager_id?: number;
     max_applications?: number;
     closes_at?: string;
+    remote_policy?: string;
   },
   createdBy: number,
 ): Promise<JobPosting> {
@@ -84,6 +85,7 @@ export async function createJob(
     hiring_manager_id: data.hiring_manager_id ?? null,
     max_applications: data.max_applications ?? null,
     closes_at: data.closes_at ?? null,
+    remote_policy: data.remote_policy ?? "onsite",
     created_by: createdBy,
   };
 

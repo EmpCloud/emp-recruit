@@ -303,6 +303,12 @@ export function JobDetailPage() {
               <span className="inline-flex items-center gap-1 capitalize">
                 <Clock className="h-4 w-4" /> {job.employment_type.replace(/_/g, " ")}
               </span>
+              {/* #32 — remote policy chip next to employment type */}
+              {(job as any).remote_policy && (
+                <span className="inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-600 capitalize">
+                  {(job as any).remote_policy === "onsite" ? "On-site" : (job as any).remote_policy}
+                </span>
+              )}
               {(job.salary_min || job.salary_max) && (
                 <span className="inline-flex items-center gap-1">
                   {/* #1359 — Show the currency's actual symbol, not always $ */}

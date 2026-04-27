@@ -169,7 +169,13 @@ export function JobListPage() {
                     )}
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-500 capitalize">
-                    {job.employment_type.replace(/_/g, " ")}
+                    {/* #32 — show remote policy next to employment type. */}
+                    <span className="block">{job.employment_type.replace(/_/g, " ")}</span>
+                    {(job as any).remote_policy && (
+                      <span className="mt-0.5 inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-600 capitalize">
+                        {(job as any).remote_policy === "onsite" ? "On-site" : (job as any).remote_policy}
+                      </span>
+                    )}
                   </td>
                   <td className="px-6 py-4">
                     <span
