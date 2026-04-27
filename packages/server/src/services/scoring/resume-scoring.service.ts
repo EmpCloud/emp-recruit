@@ -467,10 +467,17 @@ export async function getJobRankings(
   if (!job) throw new NotFoundError("Job", jobId);
 
   const rows = await db.raw<any[][]>(
-    `SELECT cs.*, c.first_name as candidate_first_name, c.last_name as candidate_last_name, c.email as candidate_email, a.stage as application_stage
+    `SELECT cs.*,
+            c.first_name as candidate_first_name,
+            c.last_name as candidate_last_name,
+            TRIM(CONCAT(COALESCE(c.first_name,''), ' ', COALESCE(c.last_name,''))) as candidate_name,
+            c.email as candidate_email,
+            j.title as job_title,
+            a.stage as application_stage
      FROM candidate_scores cs
      LEFT JOIN candidates c ON c.id = cs.candidate_id
      LEFT JOIN applications a ON a.id = cs.application_id
+     LEFT JOIN job_postings j ON j.id = cs.job_id
      WHERE cs.organization_id = ? AND cs.job_id = ?
      ORDER BY cs.overall_score DESC`,
     [orgId, jobId],
