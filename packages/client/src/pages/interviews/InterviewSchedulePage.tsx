@@ -16,14 +16,17 @@ const INTERVIEW_TYPES: { value: InterviewType; label: string }[] = [
   { value: "panel" as InterviewType, label: "Panel Interview" },
 ];
 
+// #18 — keep `round` and `duration_minutes` as strings so the user can
+// clear the field (empty string) without the input snapping back to "0"
+// via Number(""). Converted to int in handleSubmit.
 interface FormData {
   application_id: string;
   type: string;
-  round: number;
+  round: string;
   title: string;
   scheduled_at: string;
   scheduled_time: string;
-  duration_minutes: number;
+  duration_minutes: string;
   location: string;
   meeting_link: string;
   notes: string;
@@ -32,15 +35,21 @@ interface FormData {
 const INITIAL: FormData = {
   application_id: "",
   type: "video",
-  round: 1,
+  round: "1",
   title: "",
   scheduled_at: "",
   scheduled_time: "10:00",
-  duration_minutes: 60,
+  duration_minutes: "60",
   location: "",
   meeting_link: "",
   notes: "",
 };
+
+// Today in YYYY-MM-DD for the date picker min (#17).
+function todayIso() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
 
 export function InterviewSchedulePage() {
   const navigate = useNavigate();
@@ -54,13 +63,15 @@ export function InterviewSchedulePage() {
   });
   const [appSearch, setAppSearch] = useState("");
 
-  // Fetch applications for the dropdown
+  // Fetch applications for the dropdown. #16 — the backend returns
+  // `candidate_name` (via a new SELECT on application.service.ts) so the
+  // picker row displays the name correctly.
   const { data: appsData, isLoading: loadingApps } = useQuery({
     queryKey: ["applications-for-schedule", appSearch],
     queryFn: () =>
       apiGet<PaginatedResponse<ApplicationRow>>("/applications", {
         page: 1,
-        limit: 50,
+        perPage: 50,
         ...(appSearch && { search: appSearch }),
       }),
   });
@@ -95,16 +106,38 @@ export function InterviewSchedulePage() {
       return;
     }
 
+    // #17 — no past dates. Backend currently accepts any ISO date so
+    // the guard lives here.
+    const today = todayIso();
+    if (form.scheduled_at < today) {
+      toast.error("Interview date cannot be in the past");
+      return;
+    }
+
+    // #19 — backend requires round and duration_minutes to be non-zero
+    // positive integers; `!round` in the route handler rejects 0 with a
+    // "Missing required fields" error. Fail fast with a clearer message.
+    const round = parseInt(form.round, 10);
+    const durationMinutes = parseInt(form.duration_minutes, 10);
+    if (!Number.isFinite(round) || round < 1) {
+      toast.error("Round must be a positive number");
+      return;
+    }
+    if (!Number.isFinite(durationMinutes) || durationMinutes < 15) {
+      toast.error("Duration must be at least 15 minutes");
+      return;
+    }
+
     // Combine date and time into ISO datetime
     const dateTime = new Date(`${form.scheduled_at}T${form.scheduled_time || "10:00"}:00`);
 
     const payload: Record<string, any> = {
       application_id: form.application_id,
       type: form.type,
-      round: form.round,
+      round,
       title: form.title,
       scheduled_at: dateTime.toISOString(),
-      duration_minutes: form.duration_minutes,
+      duration_minutes: durationMinutes,
     };
 
     if (form.location) payload.location = form.location;
@@ -220,11 +253,13 @@ export function InterviewSchedulePage() {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Round</label>
+              {/* #18 — store as string so the user can clear the field
+                  with backspace without Number("") snapping back to 0. */}
               <input
                 type="number"
                 min={1}
                 value={form.round}
-                onChange={(e) => setForm((p) => ({ ...p, round: Number(e.target.value) }))}
+                onChange={(e) => setForm((p) => ({ ...p, round: e.target.value }))}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
               />
             </div>
@@ -235,10 +270,12 @@ export function InterviewSchedulePage() {
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Date <span className="text-red-500">*</span>
               </label>
+              {/* #17 — can't schedule in the past. */}
               <input
                 type="date"
                 required
                 value={form.scheduled_at}
+                min={todayIso()}
                 onChange={(e) => setForm((p) => ({ ...p, scheduled_at: e.target.value }))}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
               />
@@ -257,12 +294,13 @@ export function InterviewSchedulePage() {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Duration (minutes)</label>
+              {/* #18 — same string-state pattern as Round. */}
               <input
                 type="number"
                 min={15}
                 max={480}
                 value={form.duration_minutes}
-                onChange={(e) => setForm((p) => ({ ...p, duration_minutes: Number(e.target.value) }))}
+                onChange={(e) => setForm((p) => ({ ...p, duration_minutes: e.target.value }))}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
               />
             </div>
