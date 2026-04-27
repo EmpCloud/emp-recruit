@@ -128,7 +128,10 @@ export function DashboardPage() {
       value: totalApplications,
       icon: FileText,
       color: "bg-blue-50 text-blue-600",
-      link: "/jobs",
+      // #10 — was `/jobs`, which dropped the user on the Job Posting tab.
+      // Applications are browsed through candidates until a dedicated
+      // /applications list page ships.
+      link: "/candidates",
     },
     {
       label: "Total Jobs",
