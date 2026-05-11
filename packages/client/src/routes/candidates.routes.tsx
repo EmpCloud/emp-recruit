@@ -10,6 +10,9 @@ const CandidateDetailPage = lazy(() =>
 const CandidateCreatePage = lazy(() =>
   import("@/pages/candidates/CandidateCreatePage").then((m) => ({ default: m.CandidateCreatePage })),
 );
+const CandidateEditPage = lazy(() =>
+  import("@/pages/candidates/CandidateEditPage").then((m) => ({ default: m.CandidateEditPage })),
+);
 const ComparisonPage = lazy(() =>
   import("@/pages/candidates/ComparisonPage").then((m) => ({ default: m.ComparisonPage })),
 );
@@ -19,6 +22,7 @@ export const candidateRoutes = (
     <Route path="/candidates" element={<CandidateListPage />} />
     <Route path="/candidates/new" element={<CandidateCreatePage />} />
     <Route path="/candidates/compare" element={<ComparisonPage />} />
+    <Route path="/candidates/:id/edit" element={<CandidateEditPage />} />
     <Route path="/candidates/:id" element={<CandidateDetailPage />} />
   </>
 );
