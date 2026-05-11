@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Loader2, Gift, Plus, X, Pencil } from "lucide-react";
 import { api, apiGet, apiPost } from "@/api/client";
@@ -60,6 +60,27 @@ export function ReferralListPage() {
     relationship: "",
     notes: "",
   });
+  // Pick from existing candidates so referrers don't have to retype
+  // information already on file. Selected candidate's name/email/phone
+  // auto-fill the form below.
+  const [candidateSearch, setCandidateSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(candidateSearch.trim()), 250);
+    return () => clearTimeout(t);
+  }, [candidateSearch]);
+
+  const candidatesQuery = useQuery({
+    queryKey: ["candidates-for-referral", debouncedSearch],
+    queryFn: () =>
+      apiGet<PaginatedResponse<{ id: string; first_name: string; last_name: string; email: string; phone: string | null }>>(
+        "/candidates",
+        { perPage: 10, search: debouncedSearch || undefined },
+      ),
+    enabled: showForm,
+  });
+  const candidateOptions = candidatesQuery.data?.data?.data ?? [];
 
   // Fetch open jobs for the dropdown
   const jobsQuery = useQuery({
@@ -176,6 +197,50 @@ export function ReferralListPage() {
       {showForm && (
         <div className="mt-6 rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
           <h3 className="text-lg font-semibold text-gray-900">Submit a Referral</h3>
+
+          <div className="mt-4 rounded-lg border border-gray-200 bg-gray-50 p-3">
+            <label className="block text-sm font-medium text-gray-700">Pick from existing candidates</label>
+            <input
+              type="text"
+              value={candidateSearch}
+              onChange={(e) => setCandidateSearch(e.target.value)}
+              placeholder="Search by name or email..."
+              className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+            />
+            {candidateOptions.length > 0 && (
+              <div className="mt-2 max-h-40 overflow-y-auto rounded-lg border border-gray-200 bg-white">
+                {candidateOptions.map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => {
+                      setForm((p) => ({
+                        ...p,
+                        first_name: c.first_name,
+                        last_name: c.last_name,
+                        email: c.email,
+                        phone: c.phone || p.phone,
+                      }));
+                      setCandidateSearch("");
+                    }}
+                    className="flex w-full items-center justify-between gap-3 border-b border-gray-100 px-3 py-2 text-left text-sm last:border-b-0 hover:bg-brand-50"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-medium text-gray-900">
+                        {c.first_name} {c.last_name}
+                      </p>
+                      <p className="truncate text-xs text-gray-500">{c.email}</p>
+                    </div>
+                    <span className="text-xs text-brand-600">Use</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            {debouncedSearch && candidateOptions.length === 0 && !candidatesQuery.isLoading && (
+              <p className="mt-2 text-xs text-gray-500">No matching candidates. Fill the form below to refer a new person.</p>
+            )}
+          </div>
+
           <form onSubmit={handleSubmit} className="mt-4 grid gap-4 sm:grid-cols-2">
             <div className="sm:col-span-2">
               <label className="block text-sm font-medium text-gray-700">Job Position *</label>
