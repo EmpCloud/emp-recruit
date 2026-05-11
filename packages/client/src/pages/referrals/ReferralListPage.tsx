@@ -1,10 +1,22 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Loader2, Gift, Plus, X } from "lucide-react";
-import { apiGet, apiPost, apiPut } from "@/api/client";
+import { Loader2, Gift, Plus, X, Pencil } from "lucide-react";
+import { api, apiGet, apiPost } from "@/api/client";
 import { formatDate } from "@/lib/utils";
+import { getUser } from "@/lib/auth-store";
 import toast from "react-hot-toast";
 import type { JobPosting, PaginatedResponse } from "@emp-recruit/shared";
+
+const ADMIN_ROLES = ["super_admin", "org_admin", "hr_admin", "hr_manager"];
+
+const STATUS_OPTIONS = [
+  { value: "submitted", label: "Submitted" },
+  { value: "under_review", label: "Under Review" },
+  { value: "hired", label: "Hired" },
+  { value: "rejected", label: "Rejected" },
+  { value: "bonus_eligible", label: "Bonus Eligible" },
+  { value: "bonus_paid", label: "Bonus Paid" },
+];
 
 interface ReferralRow {
   id: string;
@@ -34,6 +46,11 @@ const STATUS_COLORS: Record<string, string> = {
 export function ReferralListPage() {
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
+  const [editingRef, setEditingRef] = useState<ReferralRow | null>(null);
+  const [editForm, setEditForm] = useState({ status: "", bonus_amount: "" });
+  const user = getUser();
+  const isAdmin = ADMIN_ROLES.includes((user?.role as string) || "");
+
   const [form, setForm] = useState({
     job_id: "",
     first_name: "",
@@ -74,6 +91,51 @@ export function ReferralListPage() {
       toast.error(err.response?.data?.error?.message || "Failed to submit referral");
     },
   });
+
+  const updateStatusMutation = useMutation({
+    mutationFn: (payload: { id: string; status: string; bonus_amount?: number }) =>
+      api.patch(`/referrals/${payload.id}/status`, {
+        status: payload.status,
+        ...(payload.bonus_amount !== undefined ? { bonus_amount: payload.bonus_amount } : {}),
+      }).then((r) => r.data),
+    onSuccess: () => {
+      toast.success("Referral updated");
+      queryClient.invalidateQueries({ queryKey: ["referrals"] });
+      setEditingRef(null);
+    },
+    onError: (err: any) => {
+      toast.error(err?.response?.data?.error?.message || "Failed to update referral");
+    },
+  });
+
+  function openEdit(r: ReferralRow) {
+    setEditingRef(r);
+    setEditForm({
+      status: r.status,
+      bonus_amount: r.bonus_amount != null ? String(r.bonus_amount / 100) : "",
+    });
+  }
+
+  function submitEdit() {
+    if (!editingRef) return;
+    if (!editForm.status) {
+      toast.error("Pick a status");
+      return;
+    }
+    const payload: { id: string; status: string; bonus_amount?: number } = {
+      id: editingRef.id,
+      status: editForm.status,
+    };
+    if (editForm.bonus_amount) {
+      const amount = Number(editForm.bonus_amount);
+      if (!Number.isFinite(amount) || amount < 0) {
+        toast.error("Bonus amount cannot be negative");
+        return;
+      }
+      payload.bonus_amount = Math.round(amount * 100);
+    }
+    updateStatusMutation.mutate(payload);
+  }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -229,6 +291,7 @@ export function ReferralListPage() {
                   <th className="px-4 py-3 font-medium text-gray-600">Status</th>
                   <th className="px-4 py-3 font-medium text-gray-600">Bonus Amount</th>
                   <th className="px-4 py-3 font-medium text-gray-600">Date</th>
+                  {isAdmin && <th className="px-4 py-3 font-medium text-gray-600 w-12"></th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -247,6 +310,17 @@ export function ReferralListPage() {
                       {ref.bonus_amount ? `INR ${(ref.bonus_amount / 100).toLocaleString()}` : "—"}
                     </td>
                     <td className="px-4 py-3 text-gray-500">{formatDate(ref.created_at)}</td>
+                    {isAdmin && (
+                      <td className="px-4 py-3">
+                        <button
+                          onClick={() => openEdit(ref)}
+                          className="rounded p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+                          title="Update status / bonus"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
@@ -254,6 +328,72 @@ export function ReferralListPage() {
           </div>
         )}
       </div>
+
+      {editingRef && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-xl bg-white shadow-xl">
+            <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
+              <h3 className="text-base font-semibold text-gray-900">Update Referral</h3>
+              <button
+                onClick={() => setEditingRef(null)}
+                className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="px-6 py-4 space-y-4">
+              <p className="text-sm text-gray-600">
+                <span className="font-medium">{editingRef.candidate_name}</span>
+                <span className="text-gray-400"> for {editingRef.job_title}</span>
+              </p>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Status</label>
+                <select
+                  value={editForm.status}
+                  onChange={(e) => setEditForm((p) => ({ ...p, status: e.target.value }))}
+                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                >
+                  {STATUS_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Bonus Amount (INR)</label>
+                <input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={editForm.bonus_amount}
+                  onChange={(e) => setEditForm((p) => ({ ...p, bonus_amount: e.target.value }))}
+                  placeholder="e.g. 25000"
+                  className="mt-1 block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                />
+                <p className="mt-1 text-xs text-gray-400">
+                  Leave blank to keep current amount. Stored as paise; entered value is multiplied by 100.
+                </p>
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 border-t border-gray-100 bg-gray-50 px-6 py-4 rounded-b-xl">
+              <button
+                type="button"
+                onClick={() => setEditingRef(null)}
+                className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={submitEdit}
+                disabled={updateStatusMutation.isPending}
+                className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50"
+              >
+                {updateStatusMutation.isPending ? "Saving..." : "Save"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
