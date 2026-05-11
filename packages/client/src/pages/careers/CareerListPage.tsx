@@ -59,7 +59,8 @@ export function CareerListPage() {
         )}
         <h1 className="text-3xl font-bold text-gray-900">{career.careerPage.title || career.orgName}</h1>
         <p className="mx-auto mt-2 max-w-2xl text-gray-600">
-          {career.careerPage.description || `Explore open positions at ${career.orgName}`}
+          {(career.careerPage.description || "").replace(/<[^>]+>/g, "").trim() ||
+            `Explore open positions at ${career.orgName}`}
         </p>
       </div>
 

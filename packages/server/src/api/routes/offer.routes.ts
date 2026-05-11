@@ -111,7 +111,8 @@ router.post(
     try {
       const orgId = req.user!.empcloudOrgId;
       const userId = req.user!.empcloudUserId;
-      const offer = await offerService.approve(orgId, String(req.params.id), userId, req.body.comment);
+      const userRole = req.user!.role;
+      const offer = await offerService.approve(orgId, String(req.params.id), userId, userRole, req.body?.comment);
       sendSuccess(res, offer);
     } catch (err) {
       next(err);
@@ -126,7 +127,8 @@ router.post(
     try {
       const orgId = req.user!.empcloudOrgId;
       const userId = req.user!.empcloudUserId;
-      const offer = await offerService.reject(orgId, String(req.params.id), userId, req.body.comment);
+      const userRole = req.user!.role;
+      const offer = await offerService.reject(orgId, String(req.params.id), userId, userRole, req.body?.comment);
       sendSuccess(res, offer);
     } catch (err) {
       next(err);

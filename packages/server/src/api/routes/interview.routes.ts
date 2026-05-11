@@ -55,13 +55,22 @@ router.post(
         throw new ValidationError("Missing required fields: application_id, type, round, title, scheduled_at, duration_minutes");
       }
 
+      const roundNum = Number(round);
+      if (!Number.isInteger(roundNum) || roundNum < 1) {
+        throw new ValidationError("Round must be a positive integer");
+      }
+      const durationNum = Number(duration_minutes);
+      if (!Number.isInteger(durationNum) || durationNum < 15 || durationNum > 480) {
+        throw new ValidationError("Duration must be between 15 and 480 minutes");
+      }
+
       const interview = await interviewService.scheduleInterview(orgId, {
         application_id,
         type,
-        round,
+        round: roundNum,
         title,
         scheduled_at,
-        duration_minutes,
+        duration_minutes: durationNum,
         location,
         meeting_link,
         notes,
@@ -124,6 +133,19 @@ router.put("/:id", authorize("org_admin", "hr_admin", "hr_manager"), async (req:
   try {
     const orgId = req.user!.empcloudOrgId;
     const { type, round, title, scheduled_at, duration_minutes, location, meeting_link, notes } = req.body;
+
+    if (round !== undefined && round !== null) {
+      const roundNum = Number(round);
+      if (!Number.isInteger(roundNum) || roundNum < 1) {
+        throw new ValidationError("Round must be a positive integer");
+      }
+    }
+    if (duration_minutes !== undefined && duration_minutes !== null) {
+      const durationNum = Number(duration_minutes);
+      if (!Number.isInteger(durationNum) || durationNum < 15 || durationNum > 480) {
+        throw new ValidationError("Duration must be between 15 and 480 minutes");
+      }
+    }
 
     const interview = await interviewService.updateInterview(orgId, String(req.params.id), {
       type,

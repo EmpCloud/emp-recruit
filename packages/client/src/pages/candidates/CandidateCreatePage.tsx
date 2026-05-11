@@ -26,6 +26,7 @@ interface FormData {
   current_company: string;
   current_title: string;
   experience_years: string;
+  experience_months: string;
   skills: string;
   notes: string;
   tags: string;
@@ -42,6 +43,7 @@ const INITIAL: FormData = {
   current_company: "",
   current_title: "",
   experience_years: "",
+  experience_months: "",
   skills: "",
   notes: "",
   tags: "",
@@ -68,6 +70,17 @@ export function CandidateCreatePage() {
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
+    const years = form.experience_years ? Number(form.experience_years) : 0;
+    const months = form.experience_months ? Number(form.experience_months) : 0;
+    if (!Number.isFinite(years) || years < 0) {
+      toast.error("Experience years cannot be negative");
+      return;
+    }
+    if (!Number.isFinite(months) || months < 0 || months > 11) {
+      toast.error("Experience months must be between 0 and 11");
+      return;
+    }
+
     const payload: Record<string, any> = {
       first_name: form.first_name,
       last_name: form.last_name,
@@ -80,7 +93,9 @@ export function CandidateCreatePage() {
     if (form.portfolio_url) payload.portfolio_url = form.portfolio_url;
     if (form.current_company) payload.current_company = form.current_company;
     if (form.current_title) payload.current_title = form.current_title;
-    if (form.experience_years) payload.experience_years = Number(form.experience_years);
+    if (form.experience_years || form.experience_months) {
+      payload.experience_years = Math.round((years + months / 12) * 10) / 10;
+    }
     if (form.skills) payload.skills = form.skills.split(",").map((s) => s.trim()).filter(Boolean);
     if (form.notes) payload.notes = form.notes;
     if (form.tags) payload.tags = form.tags.split(",").map((t) => t.trim()).filter(Boolean);
@@ -137,8 +152,32 @@ export function CandidateCreatePage() {
             {field("Current Company", "current_company", "text", { placeholder: "Acme Corp" })}
             {field("Current Title", "current_title", "text", { placeholder: "Software Engineer" })}
           </div>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            {field("Experience (years)", "experience_years", "number", { placeholder: "5" })}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Experience (years)</label>
+              <input
+                type="number"
+                min={0}
+                step={1}
+                value={form.experience_years}
+                onChange={(e) => setForm((p) => ({ ...p, experience_years: e.target.value }))}
+                placeholder="5"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm placeholder:text-gray-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Months</label>
+              <input
+                type="number"
+                min={0}
+                max={11}
+                step={1}
+                value={form.experience_months}
+                onChange={(e) => setForm((p) => ({ ...p, experience_months: e.target.value }))}
+                placeholder="0"
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm placeholder:text-gray-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+              />
+            </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Source</label>
               <select

@@ -100,15 +100,15 @@ export async function scheduleInterview(
     type: data.type,
     round: data.round,
     title: data.title,
-    scheduled_at: new Date(data.scheduled_at).toISOString(),
+    scheduled_at: new Date(data.scheduled_at) as any,
     duration_minutes: data.duration_minutes,
     location: data.location || null,
     meeting_link: data.meeting_link || null,
     status: "scheduled" as InterviewStatus,
     notes: data.notes || null,
     created_by: data.created_by,
-    created_at: now.toISOString(),
-    updated_at: now.toISOString(),
+    created_at: now as any,
+    updated_at: now as any,
   });
 
   // Create panelists
@@ -120,7 +120,7 @@ export async function scheduleInterview(
         interview_id: interviewId,
         user_id: p.user_id,
         role: p.role,
-        created_at: now.toISOString(),
+        created_at: now as any,
       });
       panelists.push(panelist);
     }

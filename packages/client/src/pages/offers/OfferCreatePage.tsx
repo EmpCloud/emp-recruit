@@ -10,6 +10,11 @@ interface DepartmentOption { id: number; name: string }
 
 type ApplicationRow = Application & { candidate_name: string; job_title: string };
 
+function todayIso() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 interface FormData {
   application_id: string;
   job_title: string;
@@ -101,6 +106,25 @@ export function OfferCreatePage() {
       toast.error("Please enter salary amount");
       return;
     }
+    const salary = Number(form.salary_amount);
+    if (!Number.isFinite(salary) || salary < 0) {
+      toast.error("Salary amount cannot be negative");
+      return;
+    }
+
+    const today = todayIso();
+    if (form.joining_date < today) {
+      toast.error("Joining date cannot be in the past");
+      return;
+    }
+    if (form.expiry_date < today) {
+      toast.error("Expiry date cannot be in the past");
+      return;
+    }
+    if (form.expiry_date < form.joining_date) {
+      toast.error("Expiry date cannot be before joining date");
+      return;
+    }
     if (!form.joining_date) {
       toast.error("Please select a joining date");
       return;
@@ -114,10 +138,14 @@ export function OfferCreatePage() {
       return;
     }
 
+    // Currencies stored in their smallest unit (paise for INR, cents for
+    // USD/EUR/GBP). The form asks for the major unit (rupees, dollars) so
+    // multiply by 100 before sending. Zero-decimal currencies (none in our
+    // current list) would skip this step.
     const payload: Record<string, any> = {
       application_id: form.application_id,
       job_title: form.job_title,
-      salary_amount: Number(form.salary_amount),
+      salary_amount: Math.round(Number(form.salary_amount) * 100),
       salary_currency: form.salary_currency,
       joining_date: form.joining_date,
       expiry_date: form.expiry_date,
@@ -132,6 +160,7 @@ export function OfferCreatePage() {
 
   const saving = createMutation.isPending;
   const selectedApp = applications.find((a) => a.id === form.application_id);
+  const minDate = useMemo(() => todayIso(), []);
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -261,17 +290,21 @@ export function OfferCreatePage() {
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Salary Amount (smallest unit) <span className="text-red-500">*</span>
+                Annual Salary <span className="text-red-500">*</span>
               </label>
               <input
                 type="number"
                 required
                 min={0}
+                step="0.01"
                 value={form.salary_amount}
                 onChange={(e) => setForm((p) => ({ ...p, salary_amount: e.target.value }))}
-                placeholder="e.g. 1500000 (in paise for INR)"
+                placeholder={form.salary_currency === "INR" ? "e.g. 1500000" : "e.g. 75000"}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm placeholder:text-gray-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
               />
+              <p className="mt-1 text-xs text-gray-400">
+                In {form.salary_currency === "INR" ? "rupees" : form.salary_currency === "USD" ? "dollars" : form.salary_currency === "EUR" ? "euros" : form.salary_currency === "GBP" ? "pounds" : form.salary_currency}.
+              </p>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Currency</label>
@@ -313,6 +346,7 @@ export function OfferCreatePage() {
                 type="date"
                 required
                 value={form.joining_date}
+                min={minDate}
                 onChange={(e) => setForm((p) => ({ ...p, joining_date: e.target.value }))}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
               />
@@ -325,6 +359,7 @@ export function OfferCreatePage() {
                 type="date"
                 required
                 value={form.expiry_date}
+                min={form.joining_date || minDate}
                 onChange={(e) => setForm((p) => ({ ...p, expiry_date: e.target.value }))}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
               />

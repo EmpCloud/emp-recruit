@@ -92,10 +92,11 @@ export function OfferDetailPage() {
   const [selectedApproverIds, setSelectedApproverIds] = useState<number[]>([]);
 
   const { data: usersData } = useQuery({
-    queryKey: ["org-users"],
+    queryKey: ["org-users", "approver"],
     queryFn: () =>
       apiGet<{ id: number; first_name: string; last_name: string; email: string; role: string; designation: string | null }[]>(
         "/organizations/users",
+        { role: "approver" },
       ),
     enabled: showApproverModal,
   });

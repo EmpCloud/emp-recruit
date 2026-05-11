@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import {
   Brain,
   Loader2,
@@ -16,6 +16,7 @@ import type { PaginatedResponse } from "@emp-recruit/shared";
 
 interface ScoredApplication {
   id: string;
+  application_id: string;
   candidate_id: string;
   candidate_name: string;
   job_id: string;
@@ -48,8 +49,19 @@ const RECOMMENDATION_LABELS: Record<string, string> = {
 };
 
 export function ScoringPage() {
-  const [selectedJobId, setSelectedJobId] = useState<string>("");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [selectedJobId, setSelectedJobId] = useState<string>(searchParams.get("job") || "");
   const queryClient = useQueryClient();
+
+  useEffect(() => {
+    const current = searchParams.get("job") || "";
+    if (current !== selectedJobId) {
+      const next = new URLSearchParams(searchParams);
+      if (selectedJobId) next.set("job", selectedJobId);
+      else next.delete("job");
+      setSearchParams(next, { replace: true });
+    }
+  }, [selectedJobId, searchParams, setSearchParams]);
 
   // Fetch jobs that have applications
   const { data: jobsData } = useQuery({
@@ -241,7 +253,7 @@ export function ScoringPage() {
                   </td>
                   <td className="whitespace-nowrap px-6 py-4 text-right">
                     <Link
-                      to={`/scoring/${r.id}`}
+                      to={`/scoring/${r.application_id}`}
                       className="text-sm font-medium text-purple-600 hover:text-purple-800"
                     >
                       View Report

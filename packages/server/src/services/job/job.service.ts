@@ -84,7 +84,7 @@ export async function createJob(
     status: "draft",
     hiring_manager_id: data.hiring_manager_id ?? null,
     max_applications: data.max_applications ?? null,
-    closes_at: data.closes_at ?? null,
+    closes_at: data.closes_at ? new Date(data.closes_at) : null,
     remote_policy: data.remote_policy ?? "onsite",
     created_by: createdBy,
   };

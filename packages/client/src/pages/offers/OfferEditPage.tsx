@@ -4,7 +4,7 @@
 // submits via PUT /offers/:id. Only draft offers can be edited (the
 // server enforces this via `updateOffer`).
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Save, Loader2 } from "lucide-react";
@@ -21,6 +21,11 @@ interface FormData {
   expiry_date: string;
   benefits: string;
   notes: string;
+}
+
+function todayIso() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
 const INITIAL: FormData = {
@@ -47,14 +52,16 @@ export function OfferEditPage() {
     enabled: Boolean(id),
   });
 
-  // Pre-fill the form once the offer loads.
+  // Pre-fill the form once the offer loads. salary_amount is stored in
+  // smallest unit (paise/cents) on the server but the form edits in major
+  // units, so divide by 100.
   useEffect(() => {
     const o = offerData?.data;
     if (!o) return;
     setForm({
       job_title: o.job_title ?? "",
       department: o.department ?? "",
-      salary_amount: String(o.salary_amount ?? ""),
+      salary_amount: o.salary_amount != null ? String(o.salary_amount / 100) : "",
       salary_currency: o.salary_currency ?? "INR",
       joining_date: (o.joining_date ?? "").slice(0, 10),
       expiry_date: (o.expiry_date ?? "").slice(0, 10),
@@ -79,12 +86,32 @@ export function OfferEditPage() {
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (form.salary_amount) {
+      const salary = Number(form.salary_amount);
+      if (!Number.isFinite(salary) || salary < 0) {
+        toast.error("Salary cannot be negative");
+        return;
+      }
+    }
+    const today = todayIso();
+    if (form.joining_date && form.joining_date < today) {
+      toast.error("Joining date cannot be in the past");
+      return;
+    }
+    if (form.expiry_date && form.expiry_date < today) {
+      toast.error("Expiry date cannot be in the past");
+      return;
+    }
+    if (form.joining_date && form.expiry_date && form.expiry_date < form.joining_date) {
+      toast.error("Expiry date cannot be before joining date");
+      return;
+    }
     const payload: Record<string, any> = {
       job_title: form.job_title,
       salary_currency: form.salary_currency,
     };
     if (form.department) payload.department = form.department;
-    if (form.salary_amount) payload.salary_amount = Number(form.salary_amount);
+    if (form.salary_amount) payload.salary_amount = Math.round(Number(form.salary_amount) * 100);
     if (form.joining_date) payload.joining_date = form.joining_date;
     if (form.expiry_date) payload.expiry_date = form.expiry_date;
     if (form.benefits) payload.benefits = form.benefits;
@@ -100,6 +127,7 @@ export function OfferEditPage() {
     );
   }
 
+  const minDate = useMemo(() => todayIso(), []);
   const offer = offerData?.data;
   if (!offer) {
     return (
@@ -163,15 +191,19 @@ export function OfferEditPage() {
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Salary *</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Annual Salary *</label>
               <input
                 type="number"
                 required
                 min={0}
+                step="0.01"
                 value={form.salary_amount}
                 onChange={(e) => setForm((p) => ({ ...p, salary_amount: e.target.value }))}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
               />
+              <p className="mt-1 text-xs text-gray-400">
+                In {form.salary_currency === "INR" ? "rupees" : form.salary_currency === "USD" ? "dollars" : form.salary_currency === "EUR" ? "euros" : form.salary_currency === "GBP" ? "pounds" : form.salary_currency}.
+              </p>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Currency</label>
@@ -195,6 +227,7 @@ export function OfferEditPage() {
                 type="date"
                 required
                 value={form.joining_date}
+                min={minDate}
                 onChange={(e) => setForm((p) => ({ ...p, joining_date: e.target.value }))}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
               />
@@ -205,6 +238,7 @@ export function OfferEditPage() {
                 type="date"
                 required
                 value={form.expiry_date}
+                min={form.joining_date || minDate}
                 onChange={(e) => setForm((p) => ({ ...p, expiry_date: e.target.value }))}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
               />

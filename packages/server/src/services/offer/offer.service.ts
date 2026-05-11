@@ -198,6 +198,7 @@ export async function approve(
   orgId: number,
   offerId: string,
   userId: number,
+  userRole: string,
   comment?: string,
 ): Promise<Offer> {
   const db = getDB();
@@ -210,24 +211,40 @@ export async function approve(
     throw new ValidationError("Offer is not pending approval");
   }
 
-  // Find this user's approver record
+  const PRIVILEGED_ROLES = ["super_admin", "org_admin", "hr_admin"];
+  const isPrivileged = PRIVILEGED_ROLES.includes(userRole);
+
+  // Find this user's approver record (may not exist for privileged overrides)
   const approver = await db.findOne<OfferApprover>("offer_approvers", {
     offer_id: offerId,
     user_id: userId,
   });
-  if (!approver) {
+
+  if (!approver && !isPrivileged) {
     throw new AppError(403, "FORBIDDEN", "You are not an approver for this offer");
   }
-  if (approver.status !== "pending") {
+  if (approver && approver.status !== "pending") {
     throw new ValidationError("You have already acted on this offer");
   }
 
-  // Mark this approver as approved
-  await db.update("offer_approvers", approver.id, {
-    status: "approved",
-    notes: comment || null,
-    acted_at: new Date().toISOString(),
-  });
+  // Mark this approver as approved (if they are one)
+  if (approver) {
+    await db.update("offer_approvers", approver.id, {
+      status: "approved",
+      notes: comment || null,
+      acted_at: new Date().toISOString(),
+    });
+  }
+
+  // Privileged override — mark any remaining pending approvers as approved so
+  // the offer transitions out of pending_approval immediately.
+  if (isPrivileged) {
+    await db.updateMany(
+      "offer_approvers",
+      { offer_id: offerId, status: "pending" },
+      { status: "approved", notes: comment || null, acted_at: new Date().toISOString() },
+    );
+  }
 
   // Check if all approvers have approved
   const pendingCount = await db.count("offer_approvers", {
@@ -236,7 +253,6 @@ export async function approve(
   });
 
   if (pendingCount === 0) {
-    // All approved — mark offer as approved
     return db.update<Offer>("offers", offerId, {
       status: "approved" as OfferStatus,
       approved_by: userId,
@@ -251,6 +267,7 @@ export async function reject(
   orgId: number,
   offerId: string,
   userId: number,
+  userRole: string,
   comment?: string,
 ): Promise<Offer> {
   const db = getDB();
@@ -263,20 +280,24 @@ export async function reject(
     throw new ValidationError("Offer is not pending approval");
   }
 
+  const PRIVILEGED_ROLES = ["super_admin", "org_admin", "hr_admin"];
+  const isPrivileged = PRIVILEGED_ROLES.includes(userRole);
+
   const approver = await db.findOne<OfferApprover>("offer_approvers", {
     offer_id: offerId,
     user_id: userId,
   });
-  if (!approver) {
+  if (!approver && !isPrivileged) {
     throw new AppError(403, "FORBIDDEN", "You are not an approver for this offer");
   }
 
-  // Mark this approver as rejected
-  await db.update("offer_approvers", approver.id, {
-    status: "rejected",
-    notes: comment || null,
-    acted_at: new Date().toISOString(),
-  });
+  if (approver) {
+    await db.update("offer_approvers", approver.id, {
+      status: "rejected",
+      notes: comment || null,
+      acted_at: new Date().toISOString(),
+    });
+  }
 
   // Mark entire offer as rejected (any single rejection rejects the offer)
   return db.update<Offer>("offers", offerId, { status: "draft" as OfferStatus });
@@ -333,6 +354,18 @@ export async function acceptOffer(orgId: number, id: string, notes?: string): Pr
 
   // Move application to hired stage
   await db.update("applications", offer.application_id, { stage: "hired" });
+
+  // Mark the underlying job posting as "filled" so HR sees it in the Filled
+  // tab on the job listings page.
+  if (offer.job_id) {
+    const job = await db.findOne<{ id: string; status: string }>("job_postings", {
+      id: offer.job_id,
+      organization_id: orgId,
+    });
+    if (job && job.status !== "closed") {
+      await db.update("job_postings", offer.job_id, { status: "filled" });
+    }
+  }
 
   // Notify EMP Cloud about the hire (non-blocking)
   const webhookUrl = process.env.EMPCLOUD_WEBHOOK_URL;
