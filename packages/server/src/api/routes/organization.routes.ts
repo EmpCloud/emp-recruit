@@ -45,11 +45,20 @@ router.get("/locations", async (req: Request, res: Response, next: NextFunction)
 
 // GET /users — list active users for the caller's organization.
 // Used by approver pickers (offer approval, etc.).
+//
+// `?role=approver` restricts to management roles (super_admin, org_admin,
+// hr_admin, hr_manager, manager) so the offer-approval picker doesn't
+// surface every employee + candidate as a possible approver.
 router.get("/users", async (req: Request, res: Response, next: NextFunction) => {
   try {
     const db = getEmpCloudDB();
-    const rows = await db("users")
-      .where({ organization_id: req.user!.empcloudOrgId, status: 1 })
+    const roleFilter = (req.query.role as string | undefined) || "";
+    let q = db("users")
+      .where({ organization_id: req.user!.empcloudOrgId, status: 1 });
+    if (roleFilter === "approver") {
+      q = q.whereIn("role", ["super_admin", "org_admin", "hr_admin", "hr_manager", "manager"]);
+    }
+    const rows = await q
       .select("id", "first_name", "last_name", "email", "role", "designation")
       .orderBy("first_name", "asc");
     sendSuccess(res, rows);

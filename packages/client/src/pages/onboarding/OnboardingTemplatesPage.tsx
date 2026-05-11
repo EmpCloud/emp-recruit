@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   ClipboardList,
@@ -53,6 +53,17 @@ export function OnboardingTemplatesPage() {
     queryFn: () => apiGet<TemplateWithCount[]>("/onboarding/templates"),
   });
   const templates = templatesRes?.data || [];
+
+  // Departments from EmpCloud master DB so the form dropdown matches the
+  // rest of the suite (jobs, offers). Falls back to a free-text input if
+  // the org hasn't configured any departments.
+  const { data: departmentsData } = useQuery({
+    queryKey: ["org-departments"],
+    queryFn: () =>
+      apiGet<{ id: number; name: string }[]>("/organizations/departments").catch(() => ({ data: [] })),
+    retry: false,
+  });
+  const departments = useMemo(() => departmentsData?.data ?? [], [departmentsData]);
 
   // Fetch tasks for expanded template
   const { data: tasksRes } = useQuery({
@@ -178,13 +189,26 @@ export function OnboardingTemplatesPage() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700">Department</label>
-                <input
-                  type="text"
-                  value={formData.department}
-                  onChange={(e) => setFormData({ ...formData, department: e.target.value })}
-                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-                  placeholder="e.g., Engineering"
-                />
+                {departments.length > 0 ? (
+                  <select
+                    value={formData.department}
+                    onChange={(e) => setFormData({ ...formData, department: e.target.value })}
+                    className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                  >
+                    <option value="">Select department</option>
+                    {departments.map((d) => (
+                      <option key={d.id} value={d.name}>{d.name}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    type="text"
+                    value={formData.department}
+                    onChange={(e) => setFormData({ ...formData, department: e.target.value })}
+                    className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                    placeholder="e.g., Engineering"
+                  />
+                )}
               </div>
             </div>
             <div>

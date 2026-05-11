@@ -181,7 +181,9 @@ export function OnboardingListPage() {
                 <div className="mt-4">
                   <ProgressBar percentage={checklist.progress.percentage} />
                   <p className="mt-1 text-xs text-gray-500">
-                    {checklist.progress.completed} of {checklist.progress.total} tasks completed
+                    {checklist.progress.total > 0
+                      ? `${checklist.progress.completed} of ${checklist.progress.total} tasks completed`
+                      : "No tasks in this template yet"}
                   </p>
                 </div>
 

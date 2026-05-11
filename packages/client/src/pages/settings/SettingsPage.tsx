@@ -86,9 +86,13 @@ function CareerPageSettings() {
 
   if (configQuery.data && !initialized) {
     const c = configQuery.data;
+    // Strip stray HTML tags from description if a previous tool wrote them.
+    // The career page renders this as plain text, so raw markup leaks through
+    // as visible angle brackets unless we clean it up here.
+    const cleanDescription = (c.description || "").replace(/<[^>]+>/g, "").trim();
     setForm({
       title: c.title || "",
-      description: c.description || "",
+      description: cleanDescription,
       primary_color: c.primary_color || "#4F46E5",
       slug: c.slug || "",
     });
@@ -450,7 +454,9 @@ function EmailTemplateSettings() {
             >
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
-                  <h3 className="text-sm font-semibold text-gray-900">{t.name}</h3>
+                  <h3 className="text-sm font-semibold text-gray-900">
+                    {(t.name || "").replace(/<[^>]+>/g, "")}
+                  </h3>
                   <span
                     className={`rounded-full px-2 py-0.5 text-xs font-medium ${
                       t.is_active ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"
@@ -462,10 +468,6 @@ function EmailTemplateSettings() {
                 <p className="mt-0.5 text-xs text-gray-500">
                   Trigger: <span className="font-mono">{t.trigger}</span>
                 </p>
-                {/* #33 — subjects occasionally include HTML tags in the
-                    stored value (esp. if someone pasted rich text). Strip
-                    tags for the list preview so raw markup doesn't leak into
-                    the UI. */}
                 <p className="mt-0.5 text-xs text-gray-400 truncate">
                   {(t.subject || "").replace(/<[^>]+>/g, "")}
                 </p>

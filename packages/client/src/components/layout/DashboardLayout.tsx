@@ -20,8 +20,8 @@ import { isLoggedIn, getUser, useAuthStore } from "@/lib/auth-store";
 import { cn, getInitials } from "@/lib/utils";
 import { BackToDashboard } from "@/components/BackToDashboard";
 
-type Role = "org_admin" | "hr_admin" | "hr_manager" | "employee";
-const ADMIN_ROLES: Role[] = ["org_admin", "hr_admin", "hr_manager"];
+type Role = "super_admin" | "org_admin" | "hr_admin" | "hr_manager" | "employee";
+const ADMIN_ROLES: Role[] = ["super_admin", "org_admin", "hr_admin", "hr_manager"];
 
 interface NavItem {
   to: string;
@@ -58,12 +58,7 @@ export function DashboardLayout() {
 
   const user = getUser();
   const displayName = user ? `${user.firstName} ${user.lastName}` : "User";
-  const roleLabel =
-    user?.role === "hr_admin"
-      ? "HR Admin"
-      : user?.role === "hr_manager"
-        ? "HR Manager"
-        : "Employee";
+  const roleLabel = ADMIN_ROLES.includes((user?.role || "employee") as Role) ? "Admin" : "Employee";
 
   function SidebarContent() {
     return (
