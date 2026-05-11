@@ -428,41 +428,50 @@ export function JobDetailPage() {
             Application Pipeline ({applications.length} applicant{applications.length !== 1 ? "s" : ""})
           </h2>
 
-          {applications.length > 0 && (
-            <div className="flex gap-2">
-              {compareSelection.size >= 2 && (
-                <Link
-                  to={`/candidates/compare?ids=${Array.from(compareSelection).join(",")}`}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+          <div className="flex gap-2">
+            <Link
+              to={`/candidates/new?job_id=${id}`}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-brand-300 px-3 py-2 text-sm font-medium text-brand-700 hover:bg-brand-50"
+            >
+              <Users className="h-4 w-4" />
+              Add Candidate
+            </Link>
+            {applications.length > 0 && compareSelection.size >= 2 && (
+              <Link
+                to={`/candidates/compare?ids=${Array.from(compareSelection).join(",")}`}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+              >
+                <GitCompareArrows className="h-4 w-4" />
+                Compare ({compareSelection.size})
+              </Link>
+            )}
+            {applications.length > 0 && (
+              <>
+                <button
+                  onClick={() => batchScoreMutation.mutate()}
+                  disabled={batchScoreMutation.isPending}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-purple-600 px-3 py-2 text-sm font-medium text-white hover:bg-purple-700 disabled:opacity-50"
                 >
-                  <GitCompareArrows className="h-4 w-4" />
-                  Compare ({compareSelection.size})
-                </Link>
-              )}
-              <button
-                onClick={() => batchScoreMutation.mutate()}
-                disabled={batchScoreMutation.isPending}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-purple-600 px-3 py-2 text-sm font-medium text-white hover:bg-purple-700 disabled:opacity-50"
-              >
-                {batchScoreMutation.isPending ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Sparkles className="h-4 w-4" />
-                )}
-                Batch Score All
-              </button>
-              <button
-                onClick={() => {
-                  setShowRankings(true);
-                  refetchRankings();
-                }}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-purple-300 px-3 py-2 text-sm font-medium text-purple-700 hover:bg-purple-50"
-              >
-                <BarChart className="h-4 w-4" />
-                Rankings
-              </button>
-            </div>
-          )}
+                  {batchScoreMutation.isPending ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Sparkles className="h-4 w-4" />
+                  )}
+                  Batch Score All
+                </button>
+                <button
+                  onClick={() => {
+                    setShowRankings(true);
+                    refetchRankings();
+                  }}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-purple-300 px-3 py-2 text-sm font-medium text-purple-700 hover:bg-purple-50"
+                >
+                  <BarChart className="h-4 w-4" />
+                  Rankings
+                </button>
+              </>
+            )}
+          </div>
         </div>
 
         {loadingApps ? (

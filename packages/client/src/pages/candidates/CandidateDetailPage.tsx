@@ -11,6 +11,7 @@ import {
   Linkedin,
   FileText,
   ExternalLink,
+  Pencil,
 } from "lucide-react";
 import { apiGet } from "@/api/client";
 import { resolveUploadUrl } from "@/lib/utils";
@@ -107,6 +108,13 @@ export function CandidateDetailPage() {
             </p>
           )}
         </div>
+        <Link
+          to={`/candidates/${id}/edit`}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+        >
+          <Pencil className="h-4 w-4" />
+          Edit
+        </Link>
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Save, Loader2 } from "lucide-react";
 import { apiPost } from "@/api/client";
@@ -52,14 +52,38 @@ const INITIAL: FormData = {
 export function CandidateCreatePage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const [searchParams] = useSearchParams();
+  // ?job_id=<uuid> opens the form pre-targeted at a specific job posting
+  // (from JobDetailPage "Add Candidate" button). After creating the
+  // candidate we POST an application to link them to that job.
+  const targetJobId = searchParams.get("job_id") || "";
   const [form, setForm] = useState<FormData>(INITIAL);
 
   const mutation = useMutation({
-    mutationFn: (data: Record<string, any>) => apiPost<Candidate>("/candidates", data),
+    mutationFn: async (data: Record<string, any>) => {
+      const created = await apiPost<Candidate>("/candidates", data);
+      if (targetJobId && created.data?.id) {
+        try {
+          await apiPost("/applications", {
+            job_id: targetJobId,
+            candidate_id: created.data.id,
+            source: data.source || "direct",
+          });
+        } catch {
+          toast.error("Candidate created, but linking to job failed. Add manually from the job page.");
+        }
+      }
+      return created;
+    },
     onSuccess: (res) => {
-      toast.success("Candidate added successfully");
+      toast.success(targetJobId ? "Candidate added to job" : "Candidate added successfully");
       queryClient.invalidateQueries({ queryKey: ["candidates"] });
-      navigate(`/candidates/${res.data?.id}`);
+      if (targetJobId) {
+        queryClient.invalidateQueries({ queryKey: ["job-applications", targetJobId] });
+        navigate(`/jobs/${targetJobId}`);
+      } else {
+        navigate(`/candidates/${res.data?.id}`);
+      }
     },
     onError: (err: any) => {
       const msg = err.response?.data?.error?.message ?? "Failed to add candidate";
