@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import axios from "axios";
 import type { JobPosting } from "@emp-recruit/shared";
+import { RichText } from "@/components/RichText";
 
 const PUBLIC_API = "/api/v1/public";
 
@@ -115,20 +116,14 @@ export function CareerJobDetailPage() {
           {/* Description */}
           <div className="rounded-xl border border-gray-200 bg-white p-6">
             <h2 className="text-lg font-semibold text-gray-900 mb-3">Job Description</h2>
-            <div
-              className="prose prose-sm max-w-none text-gray-700"
-              dangerouslySetInnerHTML={{ __html: job.description }}
-            />
+            <RichText html={job.description} />
           </div>
 
           {/* Requirements */}
           {job.requirements && (
             <div className="rounded-xl border border-gray-200 bg-white p-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-3">Requirements</h2>
-              <div
-                className="prose prose-sm max-w-none text-gray-700"
-                dangerouslySetInnerHTML={{ __html: job.requirements }}
-              />
+              <RichText html={job.requirements} />
             </div>
           )}
 
@@ -136,10 +131,7 @@ export function CareerJobDetailPage() {
           {job.benefits && (
             <div className="rounded-xl border border-gray-200 bg-white p-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-3">Benefits</h2>
-              <div
-                className="prose prose-sm max-w-none text-gray-700"
-                dangerouslySetInnerHTML={{ __html: job.benefits }}
-              />
+              <RichText html={job.benefits} />
             </div>
           )}
         </div>
