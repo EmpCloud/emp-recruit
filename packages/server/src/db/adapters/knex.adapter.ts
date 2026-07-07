@@ -81,6 +81,13 @@ export class KnexAdapter implements IDBAdapter {
     return this.db;
   }
 
+  // Public raw Knex handle — the query-builder escape hatch for services that
+  // need joins, BLOB columns, or other things the CRUD interface can't express
+  // (e.g. the candidate portal's cross-org job board and resume-in-MySQL).
+  knex(): Knex {
+    return this.getDb();
+  }
+
   /** Check whether a table has a specific column (cached per table). */
   private async hasColumn(table: string, column: string): Promise<boolean> {
     if (!this.tableColumns.has(table)) {

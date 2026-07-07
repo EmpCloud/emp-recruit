@@ -6,6 +6,7 @@ import {
   Plus,
   Pencil,
   Eye,
+  Trash2,
   Globe,
   Mail,
   X,
@@ -13,14 +14,17 @@ import {
   ExternalLink,
   Link2,
   Briefcase,
+  Video,
 } from "lucide-react";
-import { apiGet, apiPost, apiPut } from "@/api/client";
+import { apiGet, apiPost, apiPut, apiDelete } from "@/api/client";
 import toast from "react-hot-toast";
 import type { CareerPage, EmailTemplate } from "@emp-recruit/shared";
 import { PipelineSettingsPage } from "./PipelineSettingsPage";
+import { MeetingConnections } from "@/components/MeetingConnections";
+import { JobPortalsSettings } from "@/components/JobPortalsSettings";
 
 export function SettingsPage() {
-  const [tab, setTab] = useState<"career" | "email" | "pipeline">("career");
+  const [tab, setTab] = useState<"career" | "email" | "pipeline" | "integrations">("career");
 
   return (
     <div>
@@ -56,10 +60,30 @@ export function SettingsPage() {
           <GitBranch className="h-4 w-4" />
           Pipeline
         </button>
+        <button
+          onClick={() => setTab("integrations")}
+          className={`flex items-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors ${
+            tab === "integrations" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
+          }`}
+        >
+          <Video className="h-4 w-4" />
+          Integrations
+        </button>
       </div>
 
       <div className="mt-6">
-        {tab === "career" ? <CareerPageSettings /> : tab === "email" ? <EmailTemplateSettings /> : <PipelineSettingsPage />}
+        {tab === "career" ? (
+          <CareerPageSettings />
+        ) : tab === "email" ? (
+          <EmailTemplateSettings />
+        ) : tab === "pipeline" ? (
+          <PipelineSettingsPage />
+        ) : (
+          <>
+            <MeetingConnections />
+            <JobPortalsSettings />
+          </>
+        )}
       </div>
     </div>
   );
@@ -342,6 +366,15 @@ function EmailTemplateSettings() {
     },
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => apiDelete(`/email-templates/${id}`),
+    onSuccess: () => {
+      toast.success("Template deleted");
+      queryClient.invalidateQueries({ queryKey: ["email-templates"] });
+    },
+    onError: (err: any) => toast.error(err.response?.data?.error?.message || "Failed to delete template"),
+  });
+
   const previewMutation = useMutation({
     mutationFn: (id: string) => apiPost<{ subject: string; body: string }>(`/email-templates/${id}/preview`, {}),
     onSuccess: (res) => {
@@ -569,6 +602,14 @@ function EmailTemplateSettings() {
                   title="Edit"
                 >
                   <Pencil className="h-4 w-4" />
+                </button>
+                <button
+                  onClick={() => { if (window.confirm(`Delete the "${t.name}" template?`)) deleteMutation.mutate(t.id); }}
+                  disabled={deleteMutation.isPending}
+                  className="rounded-lg p-2 text-gray-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                  title="Delete"
+                >
+                  <Trash2 className="h-4 w-4" />
                 </button>
               </div>
             </div>

@@ -17,8 +17,11 @@ import { candidateRoutes } from "./routes/candidates.routes";
 import { interviewRoutes } from "./routes/interviews.routes";
 import { offerRoutes } from "./routes/offers.routes";
 import { onboardingRoutes } from "./routes/onboarding.routes";
+import { assessmentRoutes } from "./routes/assessments.routes";
 import { portalRoutes } from "./routes/portal.routes";
 import { careerRoutes } from "./routes/careers.routes";
+import { candidatePortalRoutes } from "./portal/routes";
+import { CandidatePortalLayout } from "./portal/CandidatePortalLayout";
 
 // Lazy-loaded pages (kept in App for single-route modules)
 const LoginPage = lazyWithRetry(() =>
@@ -44,6 +47,15 @@ const ScoringPage = lazyWithRetry(() =>
 );
 const InternalJobsPage = lazyWithRetry(() =>
   import("@/pages/internal-jobs/InternalJobsPage").then((m) => ({ default: m.InternalJobsPage })),
+);
+const TakeAssessmentPage = lazyWithRetry(() =>
+  import("@/pages/assessments/TakeAssessmentPage").then((m) => ({ default: m.TakeAssessmentPage })),
+);
+const TakeSurveyPage = lazyWithRetry(() =>
+  import("@/pages/surveys/TakeSurveyPage").then((m) => ({ default: m.TakeSurveyPage })),
+);
+const SurveysPage = lazyWithRetry(() =>
+  import("@/pages/surveys/SurveysPage").then((m) => ({ default: m.SurveysPage })),
 );
 
 function PageLoader() {
@@ -121,6 +133,10 @@ export default function App() {
         {/* Public auth */}
         <Route path="/login" element={<LoginPage />} />
 
+        {/* Public assessment / survey (candidate takes via token — no auth) */}
+        <Route path="/assessment/:token" element={<TakeAssessmentPage />} />
+        <Route path="/survey/:token" element={<TakeSurveyPage />} />
+
         {/* Root redirect */}
         <Route path="/" element={<AuthRedirect />} />
 
@@ -133,6 +149,8 @@ export default function App() {
           {interviewRoutes}
           {offerRoutes}
           {onboardingRoutes}
+          {assessmentRoutes}
+          <Route path="/surveys" element={<SurveysPage />} />
 
           {/* Scoring / AI Resume */}
           <Route path="/scoring" element={<ScoringPage />} />
@@ -156,9 +174,14 @@ export default function App() {
           {portalRoutes}
         </Route>
 
-        {/* Public career pages (no auth) */}
+        {/* Public career pages (no auth) — legacy per-org microsite */}
         <Route path="/careers/:slug" element={<PublicLayout />}>
           {careerRoutes}
+        </Route>
+
+        {/* Cross-org candidate portal (OTP auth) — public job board + apply */}
+        <Route path="/jobs-portal" element={<CandidatePortalLayout />}>
+          {candidatePortalRoutes}
         </Route>
 
         {/* 404 */}

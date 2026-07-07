@@ -16,6 +16,7 @@ import {
   createUser,
 } from "../../db/empcloud";
 import { UnauthorizedError, ValidationError, ConflictError } from "../../utils/errors";
+import { mapEmpCloudRole } from "../../api/middleware/auth.middleware";
 import type { AuthPayload } from "../../api/middleware/auth.middleware";
 
 interface LoginResult {
@@ -80,7 +81,7 @@ export async function login(email: string, password: string): Promise<LoginResul
     empcloudUserId: user.id,
     empcloudOrgId: user.organization_id,
     recruitProfileId: null,
-    role: user.role as AuthPayload["role"],
+    role: mapEmpCloudRole(user.role),
     email: user.email,
     firstName: user.first_name,
     lastName: user.last_name,
@@ -128,7 +129,7 @@ export async function register(data: RegisterData): Promise<LoginResult> {
     empcloudUserId: user.id,
     empcloudOrgId: org.id,
     recruitProfileId: null,
-    role: user.role as AuthPayload["role"],
+    role: mapEmpCloudRole(user.role),
     email: user.email,
     firstName: user.first_name,
     lastName: user.last_name,
@@ -147,10 +148,15 @@ export async function register(data: RegisterData): Promise<LoginResult> {
 }
 
 /**
- * SSO login: exchange an EMP Cloud RS256 JWT for a Recruit-specific HS256 JWT.
- * We decode the EMP Cloud token without cryptographic verification (the user
- * arrived via the trusted dashboard redirect) and validate the referenced user
- * exists and is active in the empcloud database before issuing our own tokens.
+ * SSO login: exchange an EMP Cloud JWT for a Recruit-specific HS256 JWT.
+ *
+ * Security model: the EMP Cloud token is signed by the master app with a key we
+ * don't hold, so we can't verify its signature locally. Instead we AUTHENTICATE
+ * the token against the master DB: it must carry a `jti` that resolves to a
+ * live (non-revoked, non-expired) row in oauth_access_tokens. A forged token
+ * can't produce a `jti` that exists in the master DB, so this is the real trust
+ * boundary. Both conditions are REQUIRED — we never fall back to "trust the
+ * decoded claims" (that was an auth-bypass hole).
  */
 export async function ssoLogin(empcloudToken: string): Promise<LoginResult> {
   const decoded = jwt.decode(empcloudToken);
@@ -163,23 +169,30 @@ export async function ssoLogin(empcloudToken: string): Promise<LoginResult> {
     throw new UnauthorizedError("SSO token missing user id");
   }
 
-  // Best-effort token validation — skip if empcloud DB unavailable
+  // REQUIRED: the token must be verifiable against the master DB. No jti or an
+  // unresolvable jti means we cannot trust the token — reject it (do NOT fall
+  // back to trusting the decoded payload).
+  if (!decoded.jti) {
+    throw new UnauthorizedError("SSO token is not verifiable (missing jti)");
+  }
+  const { getEmpCloudDB } = await import("../../db/empcloud");
+  let empcloudDb;
   try {
-    if (decoded.jti) {
-      const { getEmpCloudDB } = await import("../../db/empcloud");
-      const empcloudDb = getEmpCloudDB();
-      const tokenRow = await empcloudDb("oauth_access_tokens")
-        .where({ jti: decoded.jti })
-        .whereNull("revoked_at")
-        .where("expires_at", ">", new Date())
-        .first();
-      if (!tokenRow) {
-        throw new UnauthorizedError("Invalid or expired SSO token");
-      }
-    }
-  } catch (err: any) {
-    if (err instanceof UnauthorizedError) throw err;
-    // DB not initialized or unavailable — skip validation, user lookup below is sufficient
+    empcloudDb = getEmpCloudDB();
+  } catch {
+    throw new UnauthorizedError("SSO is temporarily unavailable");
+  }
+  const tokenRow = await empcloudDb("oauth_access_tokens")
+    .where({ jti: decoded.jti })
+    .whereNull("revoked_at")
+    .where("expires_at", ">", new Date())
+    .first();
+  if (!tokenRow) {
+    throw new UnauthorizedError("Invalid or expired SSO token");
+  }
+  // Bind the token to its subject: the token row must belong to the same user.
+  if (tokenRow.user_id != null && Number(tokenRow.user_id) !== userId) {
+    throw new UnauthorizedError("SSO token does not match its subject");
   }
 
   const user = await findUserById(userId);
@@ -196,7 +209,7 @@ export async function ssoLogin(empcloudToken: string): Promise<LoginResult> {
     empcloudUserId: user.id,
     empcloudOrgId: user.organization_id,
     recruitProfileId: null,
-    role: user.role as AuthPayload["role"],
+    role: mapEmpCloudRole(user.role),
     email: user.email,
     firstName: user.first_name,
     lastName: user.last_name,
@@ -240,7 +253,7 @@ export async function refreshToken(token: string): Promise<{ accessToken: string
     empcloudUserId: user.id,
     empcloudOrgId: user.organization_id,
     recruitProfileId: null,
-    role: user.role as AuthPayload["role"],
+    role: mapEmpCloudRole(user.role),
     email: user.email,
     firstName: user.first_name,
     lastName: user.last_name,

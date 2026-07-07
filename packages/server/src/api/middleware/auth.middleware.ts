@@ -87,7 +87,7 @@ export function authenticate(req: Request, _res: Response, next: NextFunction) {
  * Map an EmpCloud role string to an emp-recruit role. Mirrors the SSO login
  * mapping: HR-side admins keep elevated scope, everyone else is an employee.
  */
-function mapEmpCloudRole(role: string): AuthPayload["role"] {
+export function mapEmpCloudRole(role: string): AuthPayload["role"] {
   const roleMap: Record<string, AuthPayload["role"]> = {
     super_admin: "super_admin",
     org_admin: "org_admin",

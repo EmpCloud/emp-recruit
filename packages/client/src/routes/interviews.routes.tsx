@@ -13,9 +13,14 @@ const InterviewSchedulePage = lazyWithRetry(() =>
 const InterviewFeedbackPage = lazyWithRetry(() =>
   import("@/pages/interviews/InterviewFeedbackPage").then((m) => ({ default: m.InterviewFeedbackPage })),
 );
+const MyInterviewsPage = lazyWithRetry(() =>
+  import("@/pages/interviews/MyInterviewsPage").then((m) => ({ default: m.MyInterviewsPage })),
+);
 
 export const interviewRoutes = (
   <>
+    {/* Panelist-facing — available to any role */}
+    <Route path="/my-interviews" element={<MyInterviewsPage />} />
     <Route path="/interviews" element={<InterviewListPage />} />
     <Route path="/interviews/schedule" element={<InterviewSchedulePage />} />
     <Route path="/interviews/:id" element={<InterviewDetailPage />} />

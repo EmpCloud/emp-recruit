@@ -180,3 +180,10 @@ export async function updateReferralStatus(
 
   return updated;
 }
+
+export async function deleteReferral(orgId: number, id: string): Promise<void> {
+  const db = getDB();
+  const referral = await db.findOne<Referral>("referrals", { id, organization_id: orgId });
+  if (!referral) throw new NotFoundError("Referral", id);
+  await db.delete("referrals", id);
+}

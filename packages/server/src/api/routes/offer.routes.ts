@@ -13,7 +13,8 @@
 // ============================================================================
 
 import { Router, Request, Response, NextFunction } from "express";
-import { createOfferSchema } from "@emp-recruit/shared";
+import { createOfferSchema, updateOfferSchema } from "@emp-recruit/shared";
+import { ValidationError } from "../../utils/errors";
 import { authenticate, authorize } from "../middleware/auth.middleware";
 import { sendSuccess, sendPaginated } from "../../utils/response";
 import * as offerService from "../../services/offer/offer.service";
@@ -84,9 +85,16 @@ router.put(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const orgId = req.user!.empcloudOrgId;
-      const offer = await offerService.updateOffer(orgId, String(req.params.id), req.body);
+      // Parse against the strict update schema: only editable content fields are
+      // allowed, and unknown keys (e.g. status/approval_status) are rejected —
+      // status transitions must go through the dedicated workflow endpoints.
+      const data = updateOfferSchema.parse(req.body);
+      const offer = await offerService.updateOffer(orgId, String(req.params.id), data);
       sendSuccess(res, offer);
-    } catch (err) {
+    } catch (err: any) {
+      if (err.name === "ZodError") {
+        return next(new ValidationError("Invalid offer update", err.flatten().fieldErrors));
+      }
       next(err);
     }
   },
@@ -111,6 +119,7 @@ router.post(
 // POST /:id/approve — Approve offer
 router.post(
   "/:id/approve",
+  authorize("super_admin", "org_admin", "hr_admin", "hr_manager"),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const orgId = req.user!.empcloudOrgId;
@@ -127,6 +136,7 @@ router.post(
 // POST /:id/reject — Reject offer
 router.post(
   "/:id/reject",
+  authorize("super_admin", "org_admin", "hr_admin", "hr_manager"),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const orgId = req.user!.empcloudOrgId;

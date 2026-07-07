@@ -104,7 +104,19 @@ router.post(
   },
 );
 
-// GET /:id/applications — get candidate's applications
+// DELETE /:id — delete a candidate (blocked if they have applications)
+router.delete("/:id", authorize("super_admin", "org_admin", "hr_admin"), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { id } = idParamSchema.parse(req.params);
+    const orgId = req.user!.empcloudOrgId;
+    await candidateService.deleteCandidate(orgId, id);
+    return sendSuccess(res, { message: "Candidate deleted" });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /:id/applications — get candidate's applications (THIS ORG ONLY)
 router.get("/:id/applications", async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { id } = idParamSchema.parse(req.params);
@@ -112,6 +124,21 @@ router.get("/:id/applications", async (req: Request, res: Response, next: NextFu
 
     const applications = await candidateService.getCandidateApplications(orgId, id);
     return sendSuccess(res, applications);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /:id/resume — stream the candidate's resume (BLOB from MySQL), org-scoped.
+router.get("/:id/resume", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { id } = idParamSchema.parse(req.params);
+    const orgId = req.user!.empcloudOrgId;
+    const { fileName, mimeType, content } = await candidateService.getCandidateResume(orgId, id);
+    res.setHeader("Content-Type", mimeType);
+    const disp = req.query.download === "1" ? "attachment" : "inline";
+    res.setHeader("Content-Disposition", `${disp}; filename="${fileName.replace(/"/g, "")}"`);
+    return res.send(content);
   } catch (err) {
     next(err);
   }

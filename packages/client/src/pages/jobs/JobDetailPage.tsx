@@ -19,11 +19,14 @@ import {
   Loader2,
   GitCompareArrows,
   Trash2,
+  GripVertical,
 } from "lucide-react";
 import { apiGet, apiPatch, apiPost, apiDelete } from "@/api/client";
 import type { JobPosting, PaginatedResponse, ApplicationStage, CandidateScore } from "@emp-recruit/shared";
 import { cn, formatDate } from "@/lib/utils";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { JobDistributionPanel } from "@/components/JobDistributionPanel";
+import { RichText } from "@/components/RichText";
 import toast from "react-hot-toast";
 
 interface PipelineStage {
@@ -81,13 +84,18 @@ const RECOMMENDATION_BADGE: Record<string, { label: string; className: string }>
 };
 
 interface AppWithCandidate {
-  id: string;
+  id: string; // application id
+  candidate_id: string; // candidate id (for the candidate detail page)
   stage: string;
   rating: number | null;
   applied_at: string;
   candidate_first_name: string;
   candidate_last_name: string;
   candidate_email: string;
+  // Stored AI score (from candidate_scores), when the candidate has been scored.
+  ai_overall_score?: number | null;
+  ai_recommendation?: string | null;
+  ai_score_status?: string | null;
 }
 
 interface RankedCandidate {
@@ -155,6 +163,11 @@ export function JobDetailPage() {
     queryFn: () =>
       apiGet<PaginatedResponse<AppWithCandidate>>(`/jobs/${id}/applications`, { perPage: 100 }),
     enabled: Boolean(id),
+    // Poll while any candidate is being AI-scored so the badge updates when done.
+    refetchInterval: (q) => {
+      const rows: any[] = (q.state.data as any)?.data?.data ?? [];
+      return rows.some((a) => a.ai_score_status === "processing") ? 5000 : false;
+    },
   });
 
   const { data: rankingsData, isLoading: loadingRankings, refetch: refetchRankings } = useQuery({
@@ -171,6 +184,50 @@ export function JobDetailPage() {
     },
     onError: () => toast.error("Failed to update status"),
   });
+
+  // --- Drag & drop pipeline ---------------------------------------------------
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [dragOverStage, setDragOverStage] = useState<string | null>(null);
+
+  const moveStageMutation = useMutation({
+    mutationFn: ({ appId, stage }: { appId: string; stage: string }) =>
+      apiPatch(`/applications/${appId}/stage`, { stage }),
+    // Optimistic: move the card instantly, roll back on error.
+    onMutate: async ({ appId, stage }) => {
+      await queryClient.cancelQueries({ queryKey: ["job-applications", id] });
+      const prev = queryClient.getQueryData(["job-applications", id]);
+      queryClient.setQueryData(["job-applications", id], (old: any) => {
+        if (!old?.data?.data) return old;
+        return {
+          ...old,
+          data: {
+            ...old.data,
+            data: old.data.data.map((a: any) => (a.id === appId ? { ...a, stage } : a)),
+          },
+        };
+      });
+      return { prev };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.prev) queryClient.setQueryData(["job-applications", id], ctx.prev);
+      toast.error("Couldn't move candidate");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["job-applications", id] });
+      queryClient.invalidateQueries({ queryKey: ["job-rankings", id] });
+    },
+  });
+
+  function handleDrop(stageSlug: string) {
+    const appId = draggingId;
+    setDraggingId(null);
+    setDragOverStage(null);
+    if (!appId) return;
+    // No-op if dropped in the same column it came from.
+    const app = applications.find((a) => a.id === appId);
+    if (app && app.stage === stageSlug) return;
+    moveStageMutation.mutate({ appId, stage: stageSlug });
+  }
 
   // Closing a job stops accepting applications and (unlike Pause) is a final
   // state — confirm via a styled dialog before doing it.
@@ -200,17 +257,16 @@ export function JobDetailPage() {
 
   const scoreAppMutation = useMutation({
     mutationFn: (appId: string) => apiPost<any>(`/scoring/applications/${appId}/score`),
-    onSuccess: (data, appId) => {
-      const score = data?.data?.overallScore;
-      if (score !== undefined) {
-        setAppScores((prev) => ({ ...prev, [appId]: score }));
-      }
-      toast.success("Candidate scored successfully");
-      queryClient.invalidateQueries({ queryKey: ["job-rankings", id] });
+    onSuccess: (_data, appId) => {
+      // Scoring runs in the background (AI can take ~30-90s). Tell the user and
+      // refresh rankings shortly; the score report page polls for completion.
+      toast.success("AI scoring started — open the candidate's report to see the result.");
       setScoringAppId(null);
+      setTimeout(() => queryClient.invalidateQueries({ queryKey: ["job-rankings", id] }), 5000);
+      void appId;
     },
     onError: () => {
-      toast.error("Failed to score candidate");
+      toast.error("Failed to start scoring");
       setScoringAppId(null);
     },
   });
@@ -417,20 +473,26 @@ export function JobDetailPage() {
       </div>
 
       {/* Job details card */}
-      <div className="rounded-lg border border-gray-200 bg-white p-6 space-y-4">
+      <div className="rounded-lg border border-gray-200 bg-white p-6 space-y-5">
         <div>
-          <h2 className="text-sm font-medium text-gray-500 uppercase tracking-wider">Description</h2>
-          <p className="mt-2 text-gray-700 whitespace-pre-line">{job.description}</p>
+          <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider">Description</h3>
+          <RichText html={job.description} className="mt-2" />
         </div>
         {job.requirements && (
           <div>
-            <h2 className="text-sm font-medium text-gray-500 uppercase tracking-wider">Requirements</h2>
-            <p className="mt-2 text-gray-700 whitespace-pre-line">{job.requirements}</p>
+            <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider">Requirements</h3>
+            <RichText html={job.requirements} className="mt-2" />
+          </div>
+        )}
+        {(job as any).benefits && (
+          <div>
+            <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider">Benefits</h3>
+            <RichText html={(job as any).benefits} className="mt-2" />
           </div>
         )}
         {skills.length > 0 && (
           <div>
-            <h2 className="text-sm font-medium text-gray-500 uppercase tracking-wider">Skills</h2>
+            <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider">Skills</h3>
             <div className="mt-2 flex flex-wrap gap-2">
               {skills.map((skill: string) => (
                 <span
@@ -445,7 +507,7 @@ export function JobDetailPage() {
         )}
         {(job.experience_min !== null || job.experience_max !== null) && (
           <div>
-            <h2 className="text-sm font-medium text-gray-500 uppercase tracking-wider">Experience</h2>
+            <h3 className="text-sm font-medium text-gray-500 uppercase tracking-wider">Experience</h3>
             <p className="mt-2 text-gray-700">
               {job.experience_min ?? 0} - {job.experience_max ?? "any"} years
             </p>
@@ -457,6 +519,9 @@ export function JobDetailPage() {
           {job.closes_at && <span>Closes: {formatDate(job.closes_at)}</span>}
         </div>
       </div>
+
+      {/* Distribute to external job boards (Naukri assisted, others gated) */}
+      {job.status === "open" && id && <JobDistributionPanel jobId={id} />}
 
       {/* Kanban Pipeline */}
       <div>
@@ -542,26 +607,44 @@ export function JobDetailPage() {
                     {stage.name} ({cards.length})
                   </div>
 
-                  {/* Cards */}
+                  {/* Cards — drop zone */}
                   <div
+                    onDragOver={(e) => { e.preventDefault(); setDragOverStage(stage.slug); }}
+                    onDragLeave={(e) => {
+                      // only clear when leaving the column, not moving over a child
+                      if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOverStage((s) => (s === stage.slug ? null : s));
+                    }}
+                    onDrop={() => handleDrop(stage.slug)}
                     className={cn(
-                      "min-h-[120px] rounded-b-lg border p-2 space-y-2",
-                      STAGE_COLORS[stage.slug] ?? "bg-gray-50 border-gray-200",
+                      "min-h-[120px] rounded-b-lg border p-2 space-y-2 transition-colors",
+                      dragOverStage === stage.slug
+                        ? "border-brand-400 border-dashed bg-brand-50/60 ring-1 ring-brand-200"
+                        : STAGE_COLORS[stage.slug] ?? "bg-gray-50 border-gray-200",
                     )}
                   >
                     {cards.length === 0 ? (
-                      <p className="py-4 text-center text-xs text-gray-400">No applicants</p>
+                      <p className="py-4 text-center text-xs text-gray-400">
+                        {dragOverStage === stage.slug ? "Drop here" : "No applicants"}
+                      </p>
                     ) : (
                       cards.map((app) => (
                         <div
                           key={app.id}
+                          draggable
+                          onDragStart={(e) => {
+                            setDraggingId(app.id);
+                            e.dataTransfer.effectAllowed = "move";
+                          }}
+                          onDragEnd={() => { setDraggingId(null); setDragOverStage(null); }}
                           className={cn(
-                            "rounded-lg bg-white border p-3 shadow-sm hover:shadow-md transition-shadow",
+                            "cursor-grab rounded-lg bg-white border p-3 shadow-sm hover:shadow-md transition-all active:cursor-grabbing",
+                            draggingId === app.id ? "opacity-40 rotate-1 scale-95" : "",
                             compareSelection.has(app.id) ? "border-indigo-400 ring-1 ring-indigo-200" : "border-gray-200",
                           )}
                         >
                           <div className="flex items-start justify-between">
-                            <Link to={`/candidates/${app.id}`} className="flex-1 min-w-0">
+                            <GripVertical className="mt-0.5 h-3.5 w-3.5 shrink-0 text-gray-300" />
+                            <Link to={`/candidates/${app.candidate_id}`} className="ml-1 flex-1 min-w-0">
                               <p className="text-sm font-medium text-gray-900">
                                 {app.candidate_first_name} {app.candidate_last_name}
                               </p>
@@ -587,9 +670,23 @@ export function JobDetailPage() {
                                   {app.rating}
                                 </span>
                               )}
-                              {appScores[app.id] !== undefined && (
-                                <ScoreBadge score={appScores[app.id]} />
-                              )}
+                              {/* AI score: prefer a live session score, else the
+                                  stored one. Show a spinner while it's scoring. */}
+                              {(() => {
+                                const live = appScores[app.id];
+                                const stored = app.ai_overall_score;
+                                const scoring = app.ai_score_status === "processing" || scoringAppId === app.id;
+                                if (live !== undefined) return <ScoreBadge score={live} />;
+                                if (scoring) {
+                                  return (
+                                    <span className="inline-flex items-center gap-0.5 rounded-full bg-purple-50 px-1.5 py-0.5 text-xs font-medium text-purple-600">
+                                      <Loader2 className="h-3 w-3 animate-spin" /> Scoring…
+                                    </span>
+                                  );
+                                }
+                                if (stored != null) return <ScoreBadge score={stored} />;
+                                return null;
+                              })()}
                             </div>
                           </div>
                           <div className="mt-2 flex items-center gap-1">

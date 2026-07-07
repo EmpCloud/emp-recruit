@@ -1,11 +1,65 @@
 import { v4 as uuidv4 } from "uuid";
 import { getDB } from "../../db/adapters";
-import { NotFoundError, ConflictError } from "../../utils/errors";
+import { NotFoundError, ConflictError, ValidationError } from "../../utils/errors";
+import { safeOrderBy } from "../../utils/sort";
 import type { JobPosting, JobStatus } from "@emp-recruit/shared";
+
+// Allow-list for the ORDER BY in the raw-SQL job search path (injection guard).
+const JOB_SORT_COLUMNS = [
+  "created_at", "updated_at", "title", "department", "location", "status", "published_at", "closes_at",
+] as const;
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+// Server-side HTML cleaning for rich-text fields (description/requirements/
+// benefits). Defense-in-depth against a client that sends polluted HTML: strip
+// inline style/class/data-* attributes (Tailwind's --tw-* vars bloat the value
+// and overflowed the TEXT column), remove script/style/iframe blocks and event
+// handlers, and cap the length so a runaway payload can't silently break the
+// INSERT. Returns clean, compact HTML.
+const MAX_RICH_TEXT_BYTES = 60_000; // safely under MySQL TEXT's 65,535
+
+function cleanRichText(html: string | null | undefined, fieldLabel: string): string | null {
+  if (html == null) return null;
+  let out = String(html)
+    // drop dangerous blocks entirely (including content)
+    .replace(/<(script|style|iframe|object|embed)[\s\S]*?<\/\1>/gi, "")
+    // strip ALL inline style="" attributes (this is what carried the --tw-* junk)
+    .replace(/\sstyle\s*=\s*("[^"]*"|'[^']*')/gi, "")
+    // strip class / data-* attributes
+    .replace(/\sclass\s*=\s*("[^"]*"|'[^']*')/gi, "")
+    .replace(/\sdata-[\w-]+\s*=\s*("[^"]*"|'[^']*')/gi, "")
+    // strip on*= event handlers
+    .replace(/\son\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, "")
+    // neutralize javascript: urls
+    .replace(/(href|src)\s*=\s*("javascript:[^"]*"|'javascript:[^']*')/gi, '$1="#"')
+    .trim();
+
+  if (Buffer.byteLength(out, "utf8") > MAX_RICH_TEXT_BYTES) {
+    throw new ValidationError(
+      `${fieldLabel} is too long. Please shorten it (limit ~${Math.round(MAX_RICH_TEXT_BYTES / 1000)}KB).`,
+    );
+  }
+  return out || null;
+}
+
+// Coerce a date/ISO string into the `YYYY-MM-DD HH:MM:SS` literal MySQL's
+// DATETIME/TIMESTAMP columns accept. The client sends full ISO strings
+// (e.g. "2026-11-01T00:00:00.000Z"), which MySQL rejects with
+// ER_TRUNCATED_WRONG_VALUE. Returns null for empty/invalid input.
+function toMysqlDateTime(value: unknown): string | null {
+  if (value == null || value === "") return null;
+  const d = value instanceof Date ? value : new Date(String(value));
+  if (isNaN(d.getTime())) return null;
+  // Format in UTC to match how the timestamp was intended by the client.
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return (
+    `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ` +
+    `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`
+  );
+}
 
 function generateSlug(title: string): string {
   return title
@@ -78,14 +132,14 @@ export async function createJob(
     salary_min: data.salary_min ?? null,
     salary_max: data.salary_max ?? null,
     salary_currency: data.salary_currency ?? "INR",
-    description: data.description,
-    requirements: data.requirements ?? null,
-    benefits: data.benefits ?? null,
+    description: cleanRichText(data.description, "Description") ?? "",
+    requirements: cleanRichText(data.requirements, "Requirements"),
+    benefits: cleanRichText(data.benefits, "Benefits"),
     skills: data.skills ? JSON.stringify(data.skills) : null,
     status: "draft",
     hiring_manager_id: data.hiring_manager_id ?? null,
     max_applications: data.max_applications ?? null,
-    closes_at: data.closes_at ? new Date(data.closes_at) : null,
+    closes_at: toMysqlDateTime(data.closes_at),
     remote_policy: data.remote_policy ?? "onsite",
     is_internal: data.is_internal ?? false,
     created_by: createdBy,
@@ -110,6 +164,14 @@ export async function updateJob(
   if (data.title && data.title !== existing.title) {
     updates.slug = await ensureUniqueSlug(orgId, generateSlug(data.title), id);
   }
+  // Clean rich-text fields on update too (strips --tw-* style pollution, caps size).
+  if ("description" in data) updates.description = cleanRichText(data.description, "Description") ?? "";
+  if ("requirements" in data) updates.requirements = cleanRichText(data.requirements, "Requirements");
+  if ("benefits" in data) updates.benefits = cleanRichText(data.benefits, "Benefits");
+  // Coerce ISO date strings to MySQL DATETIME literals (the real crash: the
+  // client's "2026-11-01T00:00:00.000Z" was rejected by the timestamp column).
+  if ("closes_at" in data) updates.closes_at = toMysqlDateTime(data.closes_at);
+  if ("published_at" in data) updates.published_at = toMysqlDateTime(data.published_at);
 
   return db.update<JobPosting>("job_postings", id, updates);
 }
@@ -150,8 +212,9 @@ export async function listJobs(
       statusFilter = " AND status = ?";
       queryParams.push(params.status);
     }
+    const orderBy = safeOrderBy(params.sort, params.order, JOB_SORT_COLUMNS, "created_at");
     const dataRows = await db.raw<any[][]>(
-      `SELECT * FROM job_postings WHERE organization_id = ? AND (title LIKE ? OR department LIKE ? OR location LIKE ?)${statusFilter} ORDER BY ${params.sort ?? "created_at"} ${params.order ?? "desc"} LIMIT ? OFFSET ?`,
+      `SELECT * FROM job_postings WHERE organization_id = ? AND (title LIKE ? OR department LIKE ? OR location LIKE ?)${statusFilter} ${orderBy} LIMIT ? OFFSET ?`,
       [...queryParams, perPage, offset],
     );
 
@@ -179,7 +242,7 @@ export async function changeStatus(
 
   const updates: Record<string, any> = { status };
   if (status === "open" && !existing.published_at) {
-    updates.published_at = new Date();
+    updates.published_at = toMysqlDateTime(new Date());
   }
 
   return db.update<JobPosting>("job_postings", id, updates);

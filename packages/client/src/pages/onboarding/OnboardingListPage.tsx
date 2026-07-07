@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import {
   ClipboardList,
@@ -7,8 +7,11 @@ import {
   Calendar,
   User,
   Search,
+  X,
+  Loader2,
 } from "lucide-react";
-import { apiGet } from "@/api/client";
+import { apiGet, apiPost } from "@/api/client";
+import toast from "react-hot-toast";
 import type { OnboardingStatus, PaginatedResponse } from "@emp-recruit/shared";
 
 interface EnrichedChecklist {
@@ -70,6 +73,7 @@ export function OnboardingListPage() {
   const [activeTab, setActiveTab] = useState<string>("all");
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
+  const [showGenerate, setShowGenerate] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ["onboarding-checklists", activeTab, page],
@@ -104,8 +108,16 @@ export function OnboardingListPage() {
           >
             Manage Templates
           </Link>
+          <button
+            onClick={() => setShowGenerate(true)}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
+          >
+            <Plus className="h-4 w-4" /> New checklist
+          </button>
         </div>
       </div>
+
+      {showGenerate && <GenerateChecklistModal onClose={() => setShowGenerate(false)} />}
 
       {/* Search */}
       <div className="relative">
@@ -223,6 +235,97 @@ export function OnboardingListPage() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Generate a checklist from a template for a hired candidate's application.
+// POST /onboarding/checklists { application_id, template_id, joining_date }.
+// ---------------------------------------------------------------------------
+function GenerateChecklistModal({ onClose }: { onClose: () => void }) {
+  const queryClient = useQueryClient();
+  const [templateId, setTemplateId] = useState("");
+  const [applicationId, setApplicationId] = useState("");
+  const [joiningDate, setJoiningDate] = useState("");
+
+  const { data: templatesData } = useQuery({
+    queryKey: ["onboarding-templates"],
+    queryFn: () => apiGet<any[]>("/onboarding/templates"),
+  });
+  const templates: any[] = (templatesData?.data as any) ?? [];
+
+  // Hired candidates' applications are the valid targets for onboarding.
+  const { data: appsData } = useQuery({
+    queryKey: ["applications", "hired"],
+    queryFn: () => apiGet<any>("/applications", { stage: "hired", perPage: 100 }),
+  });
+  const apps: any[] = ((appsData?.data as any)?.data) ?? [];
+
+  const mutation = useMutation({
+    mutationFn: () =>
+      apiPost("/onboarding/checklists", {
+        application_id: applicationId,
+        template_id: templateId,
+        joining_date: joiningDate,
+      }),
+    onSuccess: () => {
+      toast.success("Onboarding checklist created");
+      queryClient.invalidateQueries({ queryKey: ["onboarding-checklists"] });
+      onClose();
+    },
+    onError: (err: any) => toast.error(err?.response?.data?.error?.message || "Could not create checklist"),
+  });
+
+  const canSubmit = templateId && applicationId && joiningDate;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4">
+          <h3 className="text-base font-semibold text-gray-900">New onboarding checklist</h3>
+          <button onClick={onClose} className="rounded-lg p-1 text-gray-400 hover:bg-gray-100"><X className="h-5 w-5" /></button>
+        </div>
+        <div className="space-y-4 p-5">
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700">Hired candidate</label>
+            {apps.length === 0 ? (
+              <p className="rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-500">No hired candidates yet. Move a candidate to "hired" first.</p>
+            ) : (
+              <select value={applicationId} onChange={(e) => setApplicationId(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500">
+                <option value="">Select…</option>
+                {apps.map((a) => <option key={a.id} value={a.id}>{a.candidate_name} — {a.job_title}</option>)}
+              </select>
+            )}
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700">Template</label>
+            {templates.length === 0 ? (
+              <p className="rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-500">No templates yet. Create one under Manage Templates.</p>
+            ) : (
+              <select value={templateId} onChange={(e) => setTemplateId(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500">
+                <option value="">Select…</option>
+                {templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </select>
+            )}
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700">Joining date</label>
+            <input type="date" value={joiningDate} onChange={(e) => setJoiningDate(e.target.value)}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" />
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 border-t border-gray-200 px-5 py-4">
+          <button onClick={onClose} className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">Cancel</button>
+          <button onClick={() => mutation.mutate()} disabled={!canSubmit || mutation.isPending}
+            className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50">
+            {mutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+            Create checklist
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

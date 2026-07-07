@@ -6,6 +6,8 @@
 import { getDB } from "../../db/adapters";
 import { NotFoundError, ValidationError, AppError } from "../../utils/errors";
 import { toMysqlDateTime } from "../../utils/date";
+import { logger } from "../../utils/logger";
+import { sendEmail } from "../email/email.service";
 import type { Offer, OfferApprover, OfferStatus } from "@emp-recruit/shared";
 
 // ---------------------------------------------------------------------------
@@ -134,6 +136,7 @@ export async function getOffer(
   }
 > {
   const db = getDB();
+  await sweepExpiredOffers(orgId);
 
   const offer = await db.findOne<Offer>("offers", { id, organization_id: orgId });
   if (!offer) {
@@ -160,8 +163,21 @@ export async function getOffer(
   };
 }
 
+// Lazily expire offers: any 'sent' offer whose expiry_date has passed becomes
+// 'expired'. Runs on read so expiry works without a scheduled job. Cheap: a
+// single conditional UPDATE scoped to the org.
+async function sweepExpiredOffers(orgId: number): Promise<void> {
+  const knex = getDB().knex();
+  await knex("offers")
+    .where({ organization_id: orgId, status: "sent" })
+    .whereNotNull("expiry_date")
+    .where("expiry_date", "<", knex.fn.now())
+    .update({ status: "expired", updated_at: knex.fn.now() });
+}
+
 export async function listOffers(orgId: number, params: ListOffersParams) {
   const db = getDB();
+  await sweepExpiredOffers(orgId);
 
   const filters: Record<string, any> = { organization_id: orgId };
   if (params.status) {
@@ -348,10 +364,42 @@ export async function sendOffer(orgId: number, id: string): Promise<Offer> {
     throw new ValidationError("Only approved offers can be sent");
   }
 
-  return db.update<Offer>("offers", id, {
+  const updated = await db.update<Offer>("offers", id, {
     status: "sent" as OfferStatus,
     sent_at: toMysqlDateTime(),
   });
+
+  // Actually EMAIL the candidate (previously "send" only flipped the status).
+  try {
+    const candidate = await db.findOne<any>("candidates", {
+      id: (offer as any).candidate_id,
+      organization_id: orgId,
+    });
+    if (candidate?.email) {
+      const appUrl = process.env.PUBLIC_APP_URL || "http://localhost:5179";
+      const name = [candidate.first_name, candidate.last_name].filter(Boolean).join(" ") || "there";
+      const esc = (s: string) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      const sal = (offer as any).salary_amount
+        ? `${(offer as any).salary_currency || ""} ${Number((offer as any).salary_amount).toLocaleString()}`
+        : "";
+      const html =
+        `<p>Dear ${esc(name)},</p>` +
+        `<p>Congratulations! We're pleased to extend an offer for the position of ` +
+        `<strong>${esc((offer as any).job_title || "the role")}</strong>${sal ? ` at ${esc(sal)}` : ""}.</p>` +
+        `<p>Please sign in to your candidate portal to review and respond to the full offer:</p>` +
+        `<p><a href="${appUrl}/jobs-portal" style="background:#4F46E5;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;">View your offer</a></p>` +
+        `<p>We look forward to your response.</p>`;
+      await sendEmail(candidate.email, `Your offer${(offer as any).job_title ? ` — ${(offer as any).job_title}` : ""}`, html);
+      logger.info(`Offer ${id} emailed to ${candidate.email}`);
+    } else {
+      logger.warn(`Offer ${id} sent but candidate has no email on file.`);
+    }
+  } catch (err: any) {
+    // Email failure shouldn't block the state transition; surface in logs.
+    logger.warn(`Offer ${id} send-email failed: ${err.message}`);
+  }
+
+  return updated;
 }
 
 export async function revokeOffer(orgId: number, id: string): Promise<Offer> {

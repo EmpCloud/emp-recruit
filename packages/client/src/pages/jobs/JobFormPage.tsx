@@ -1,10 +1,19 @@
 import { useState, useEffect, useMemo } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Save, Loader2 } from "lucide-react";
+import { ArrowLeft, Save, Loader2, Sparkles } from "lucide-react";
 import { apiGet, apiPost, apiPut } from "@/api/client";
+import { GenerateDescriptionModal } from "@/components/GenerateDescriptionModal";
+import { RichTextEditor } from "@/components/RichTextEditor";
 import type { JobPosting } from "@emp-recruit/shared";
 import toast from "react-hot-toast";
+
+// Plain-text length of an HTML string (for min-length validation).
+function htmlTextLength(html: string): number {
+  const el = document.createElement("div");
+  el.innerHTML = html || "";
+  return (el.textContent || "").trim().length;
+}
 
 // Today's date in YYYY-MM-DD for use as <input type="date" min> — #13.
 function todayIso() {
@@ -70,6 +79,7 @@ export function JobFormPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [form, setForm] = useState<FormData>(INITIAL);
+  const [showGenerate, setShowGenerate] = useState(false);
 
   const { data: existingJob, isLoading: loadingJob } = useQuery({
     queryKey: ["job", id],
@@ -177,9 +187,9 @@ export function JobFormPage() {
       return;
     }
 
-    // #14 — description min length is 10 on the server. Fail fast with a
-    // human-readable message instead of surfacing a zod error.
-    if (form.description.trim().length < 10) {
+    // #14 — description min length is 10 on the server. Check the PLAIN-TEXT
+    // length (the field now holds HTML from the rich-text editor).
+    if (htmlTextLength(form.description) < 10) {
       toast.error("Description must be at least 10 characters");
       return;
     }
@@ -305,22 +315,25 @@ export function JobFormPage() {
           {field("Job Title", "title", "text", { required: true, placeholder: "e.g. Senior Software Engineer" })}
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Description <span className="text-red-500">*</span>
-            </label>
-            <textarea
+            <div className="mb-1 flex items-center justify-between">
+              <label className="block text-sm font-medium text-gray-700">
+                Description <span className="text-red-500">*</span>
+              </label>
+              <button
+                type="button"
+                onClick={() => setShowGenerate(true)}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-brand-300 px-2.5 py-1 text-xs font-medium text-brand-700 hover:bg-brand-50"
+              >
+                <Sparkles className="h-3.5 w-3.5" /> Generate with AI
+              </button>
+            </div>
+            <RichTextEditor
               value={form.description}
-              onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))}
-              rows={6}
-              required
-              // #14 — backend enforces min length 10. Enforce client-side
-              // so the user gets immediate feedback instead of a confusing
-              // 400 from the server when they submit a 1-line description.
-              minLength={10}
-              placeholder="Describe the role, responsibilities, and what success looks like..."
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm placeholder:text-gray-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+              onChange={(html) => setForm((p) => ({ ...p, description: html }))}
+              placeholder="Describe the role, responsibilities, and what success looks like…"
+              minHeight={200}
             />
-            <p className="mt-1 text-xs text-gray-400">Minimum 10 characters.</p>
+            <p className="mt-1 text-xs text-gray-400">Format with the toolbar — headings, lists, links. Minimum 10 characters.</p>
           </div>
 
           {/* #12 — Department & Location. Dropdowns when the org has
@@ -456,23 +469,21 @@ export function JobFormPage() {
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Requirements</label>
-            <textarea
+            <RichTextEditor
               value={form.requirements}
-              onChange={(e) => setForm((p) => ({ ...p, requirements: e.target.value }))}
-              rows={4}
-              placeholder="List the key requirements for this role..."
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm placeholder:text-gray-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+              onChange={(html) => setForm((p) => ({ ...p, requirements: html }))}
+              placeholder="List the key requirements for this role…"
+              minHeight={140}
             />
           </div>
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Benefits</label>
-            <textarea
+            <RichTextEditor
               value={form.benefits}
-              onChange={(e) => setForm((p) => ({ ...p, benefits: e.target.value }))}
-              rows={3}
-              placeholder="List benefits and perks..."
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm placeholder:text-gray-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+              onChange={(html) => setForm((p) => ({ ...p, benefits: html }))}
+              placeholder="List benefits and perks…"
+              minHeight={120}
             />
           </div>
 
@@ -515,6 +526,24 @@ export function JobFormPage() {
           </p>
         )}
       </form>
+
+      {showGenerate && (
+        <GenerateDescriptionModal
+          initialTitle={form.title}
+          initialSkills={form.skills}
+          onApply={({ description, requirements, benefits, skills }) =>
+            setForm((p) => ({
+              ...p,
+              description,
+              requirements,
+              benefits,
+              // Only overwrite skills if the generator returned some.
+              skills: skills || p.skills,
+            }))
+          }
+          onClose={() => setShowGenerate(false)}
+        />
+      )}
     </div>
   );
 }

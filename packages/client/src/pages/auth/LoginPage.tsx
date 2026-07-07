@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
-import { Briefcase, Eye, EyeOff, Loader2, AlertCircle } from "lucide-react";
+import { useNavigate, useSearchParams, Link } from "react-router-dom";
+import { Briefcase, Eye, EyeOff, Loader2, AlertCircle, Search } from "lucide-react";
 import { useLogin } from "@/api/hooks";
 import { useAuthStore } from "@/lib/auth-store";
 import toast from "react-hot-toast";
@@ -170,6 +170,18 @@ export function LoginPage() {
                 )}
               </button>
             </form>
+
+            {/* Candidate entry point — so job seekers can find the public portal */}
+            <div className="mt-6 border-t border-gray-100 pt-5 text-center">
+              <p className="text-sm text-gray-500">Looking for a job?</p>
+              <Link
+                to="/jobs-portal"
+                className="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-brand-300 bg-brand-50 px-4 py-2 text-sm font-semibold text-brand-700 hover:bg-brand-100"
+              >
+                <Search className="h-4 w-4" />
+                Browse jobs & apply
+              </Link>
+            </div>
           </div>
 
           <p className="mt-6 text-center text-xs text-gray-400">

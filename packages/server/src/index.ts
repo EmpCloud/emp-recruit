@@ -37,6 +37,11 @@ import { jobDescriptionRoutes } from "./api/routes/job-description.routes";
 import { surveyRoutes } from "./api/routes/survey.routes";
 import { assessmentRoutes } from "./api/routes/assessment.routes";
 import { organizationRoutes } from "./api/routes/organization.routes";
+import { candidateAuthRoutes } from "./api/routes/candidate-auth.routes";
+import { careersRoutes } from "./api/routes/careers.routes";
+import { meetingRoutes } from "./api/routes/meetings.routes";
+import { distributionRoutes } from "./api/routes/distribution.routes";
+import { notetakerRoutes } from "./api/routes/notetaker.routes";
 import { errorHandler } from "./api/middleware/error.middleware";
 import { apiLimiter, authLimiter } from "./api/middleware/rate-limit.middleware";
 import { swaggerUIHandler, openapiHandler } from "./api/docs";
@@ -140,12 +145,21 @@ v1.use("/job-descriptions", jobDescriptionRoutes); // alias — /job-description
 v1.use("/surveys", surveyRoutes);
 v1.use("/assessments", assessmentRoutes);
 v1.use("/organizations", organizationRoutes);
+v1.use("/meetings", meetingRoutes);
+v1.use("/distribution", distributionRoutes);
+v1.use("/notetaker", notetakerRoutes);
 
 // Public routes (no auth required) — career pages, job listings, applications
 app.use("/api/v1/public", publicRoutes);
 
 // Candidate portal routes (portal auth — separate from employee auth)
 app.use("/api/v1/portal", portalRoutes);
+
+// Public candidate portal — OTP auth + cross-org job board + apply (resume in MySQL).
+// candidate-auth is public (OTP endpoints); careers mixes public (job board) and
+// candidate-auth-guarded (apply / my applications) per-route.
+app.use("/api/v1/candidate-auth", authLimiter, candidateAuthRoutes);
+app.use("/api/v1/careers", careersRoutes);
 
 app.use("/api/v1", v1);
 

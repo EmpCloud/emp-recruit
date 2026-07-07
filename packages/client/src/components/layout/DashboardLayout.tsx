@@ -14,6 +14,8 @@ import {
   Menu,
   X,
   ClipboardList,
+  ClipboardCheck,
+  MessageSquareHeart,
   Brain,
 } from "lucide-react";
 import { isLoggedIn, getUser, useAuthStore } from "@/lib/auth-store";
@@ -29,16 +31,22 @@ interface NavItem {
   label: string;
   icon: any;
   adminOnly?: boolean;
+  nonAdmin?: boolean; // shown ONLY to non-admin roles (e.g. panelist interviewers)
 }
 
 const NAV_ITEMS: NavItem[] = [
   { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  // Panelist-facing: non-admin interviewers reach their assigned interviews here.
+  // (Admins use the full "Interviews" section below instead.)
+  { to: "/my-interviews", label: "My Interviews", icon: Calendar, nonAdmin: true },
   { to: "/internal-jobs", label: "Internal Jobs", icon: Briefcase },
   { to: "/jobs", label: "Job Postings", icon: Briefcase, adminOnly: true },
   { to: "/candidates", label: "Candidates", icon: Users, adminOnly: true },
   { to: "/interviews", label: "Interviews", icon: Calendar, adminOnly: true },
   { to: "/offers", label: "Offers", icon: FileText, adminOnly: true },
   { to: "/onboarding", label: "Onboarding", icon: ClipboardList, adminOnly: true },
+  { to: "/assessments", label: "Assessments", icon: ClipboardCheck, adminOnly: true },
+  { to: "/surveys", label: "Surveys", icon: MessageSquareHeart, adminOnly: true },
   { to: "/scoring", label: "AI Scoring", icon: Brain, adminOnly: true },
   { to: "/referrals", label: "Referrals", icon: Gift },
   { to: "/analytics", label: "Analytics", icon: BarChart3, adminOnly: true },
@@ -75,7 +83,9 @@ export function DashboardLayout() {
         {/* Nav */}
         <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
           {NAV_ITEMS.filter((item) => {
-            if (item.adminOnly && !ADMIN_ROLES.includes((user?.role || "employee") as Role)) return false;
+            const isAdmin = ADMIN_ROLES.includes((user?.role || "employee") as Role);
+            if (item.adminOnly && !isAdmin) return false;
+            if (item.nonAdmin && isAdmin) return false;
             return true;
           }).map((item) => (
             <NavLink

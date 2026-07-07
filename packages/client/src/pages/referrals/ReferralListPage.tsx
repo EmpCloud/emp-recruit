@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Loader2, Gift, Plus, X, Pencil } from "lucide-react";
+import { Loader2, Gift, Plus, X, Pencil, Trash2 } from "lucide-react";
 import { api, apiGet, apiPost } from "@/api/client";
 import { formatDate } from "@/lib/utils";
 import { getUser } from "@/lib/auth-store";
@@ -131,6 +131,15 @@ export function ReferralListPage() {
     onError: (err: any) => {
       toast.error(err?.response?.data?.error?.message || "Failed to update referral");
     },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => api.delete(`/referrals/${id}`).then((r) => r.data),
+    onSuccess: () => {
+      toast.success("Referral deleted");
+      queryClient.invalidateQueries({ queryKey: ["referrals"] });
+    },
+    onError: (err: any) => toast.error(err?.response?.data?.error?.message || "Failed to delete referral"),
   });
 
   function openEdit(r: ReferralRow) {
@@ -384,13 +393,23 @@ export function ReferralListPage() {
                     <td className="px-4 py-3 text-gray-500">{formatDate(ref.created_at)}</td>
                     {isAdmin && (
                       <td className="px-4 py-3">
-                        <button
-                          onClick={() => openEdit(ref)}
-                          className="rounded p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
-                          title="Update status / bonus"
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </button>
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => openEdit(ref)}
+                            className="rounded p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+                            title="Update status / bonus"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </button>
+                          <button
+                            onClick={() => { if (window.confirm("Delete this referral?")) deleteMutation.mutate(ref.id); }}
+                            disabled={deleteMutation.isPending}
+                            className="rounded p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                            title="Delete referral"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
                       </td>
                     )}
                   </tr>

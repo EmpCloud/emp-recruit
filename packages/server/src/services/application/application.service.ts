@@ -1,7 +1,13 @@
 import { v4 as uuidv4 } from "uuid";
 import { getDB } from "../../db/adapters";
 import { NotFoundError, ConflictError, ValidationError } from "../../utils/errors";
+import { safeOrderBy } from "../../utils/sort";
 import type { Application, ApplicationStageHistory } from "@emp-recruit/shared";
+
+// Allow-list for the ORDER BY in the raw-SQL application list (injection guard).
+const APPLICATION_SORT_COLUMNS = [
+  "applied_at", "created_at", "updated_at", "stage", "rating", "source",
+] as const;
 
 // ---------------------------------------------------------------------------
 // Service functions
@@ -75,6 +81,19 @@ export async function moveStage(
   const db = getDB();
   const app = await db.findOne<Application>("applications", { id, organization_id: orgId });
   if (!app) throw new NotFoundError("Application", id);
+
+  // Validate the target stage is real for this org: a built-in stage OR one of
+  // the org's custom pipeline stages. Prevents moving a candidate into a stage
+  // that doesn't exist (which would strand them in a non-rendered column).
+  const BUILTIN_STAGES = ["applied", "screened", "interview", "offer", "hired", "rejected", "withdrawn"];
+  if (!BUILTIN_STAGES.includes(newStage)) {
+    const custom = await db.findOne("pipeline_stages", {
+      organization_id: orgId,
+      slug: newStage,
+      is_active: true,
+    });
+    if (!custom) throw new ValidationError(`Unknown pipeline stage: "${newStage}"`);
+  }
 
   const fromStage = app.stage;
 
@@ -150,25 +169,31 @@ export async function listApplications(
   );
   const total = Number(countRows[0]?.[0]?.total ?? 0);
 
-  const sortField = params.sort ?? "applied_at";
-  const sortOrder = params.order ?? "desc";
+  // Allow-list the sortable columns to keep the ORDER BY free of injection.
+  const orderBy = safeOrderBy(params.sort, params.order, APPLICATION_SORT_COLUMNS, "applied_at", "a.");
 
   const dataRows = await db.raw<any[][]>(
     // #16 — also expose a concatenated candidate_name so the Schedule
     // Interview picker (and any future UI that wants a display label)
     // doesn't have to stitch first/last together on the client.
+    // Also expose the candidate's stored AI score (if any) so the pipeline can
+    // render it without a second round-trip.
     `SELECT a.*,
             c.first_name AS candidate_first_name,
             c.last_name  AS candidate_last_name,
             c.email      AS candidate_email,
             TRIM(CONCAT(COALESCE(c.first_name,''), ' ', COALESCE(c.last_name,''))) AS candidate_name,
             j.title      AS job_title,
-            j.department AS job_department
+            j.department AS job_department,
+            cs.overall_score  AS ai_overall_score,
+            cs.recommendation AS ai_recommendation,
+            cs.status         AS ai_score_status
      FROM applications a
      LEFT JOIN candidates c ON c.id = a.candidate_id
      LEFT JOIN job_postings j ON j.id = a.job_id
+     LEFT JOIN candidate_scores cs ON cs.application_id = a.id
      WHERE ${whereClause}
-     ORDER BY a.${sortField} ${sortOrder}
+     ${orderBy}
      LIMIT ? OFFSET ?`,
     [...queryParams, perPage, offset],
   );

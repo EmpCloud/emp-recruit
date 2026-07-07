@@ -1,7 +1,14 @@
 import { v4 as uuidv4 } from "uuid";
 import { getDB } from "../../db/adapters";
 import { NotFoundError, ConflictError } from "../../utils/errors";
+import { safeOrderBy } from "../../utils/sort";
 import type { Candidate, Application } from "@emp-recruit/shared";
+
+// Columns a caller may sort candidates by (allow-list — prevents SQL injection
+// through the ORDER BY clause in the raw-SQL search path).
+const CANDIDATE_SORT_COLUMNS = [
+  "created_at", "updated_at", "first_name", "last_name", "email", "experience_years", "rating",
+] as const;
 
 // ---------------------------------------------------------------------------
 // Service functions
@@ -106,8 +113,9 @@ export async function listCandidates(
     );
     const total = Number(countRows[0]?.[0]?.total ?? 0);
 
+    const orderBy = safeOrderBy(params.sort, params.order, CANDIDATE_SORT_COLUMNS, "created_at");
     const dataRows = await db.raw<any[][]>(
-      `SELECT * FROM candidates WHERE organization_id = ? AND (first_name LIKE ? OR last_name LIKE ? OR email LIKE ? OR current_company LIKE ?) ORDER BY ${params.sort ?? "created_at"} ${params.order ?? "desc"} LIMIT ? OFFSET ?`,
+      `SELECT * FROM candidates WHERE organization_id = ? AND (first_name LIKE ? OR last_name LIKE ? OR email LIKE ? OR current_company LIKE ?) ${orderBy} LIMIT ? OFFSET ?`,
       [orgId, search, search, search, search, perPage, offset],
     );
 
@@ -131,6 +139,46 @@ export async function getCandidate(orgId: number, id: string): Promise<Candidate
   const candidate = await db.findOne<Candidate>("candidates", { id, organization_id: orgId });
   if (!candidate) throw new NotFoundError("Candidate", id);
   return candidate;
+}
+
+// Delete a candidate. Guarded: a candidate who has applications can't be deleted
+// (that would erase hiring history) — surface a clear error so the UI can steer
+// the recruiter to reject/withdraw the application instead.
+export async function deleteCandidate(orgId: number, id: string): Promise<void> {
+  const db = getDB();
+  const candidate = await db.findOne<Candidate>("candidates", { id, organization_id: orgId });
+  if (!candidate) throw new NotFoundError("Candidate", id);
+
+  const appCount = await db.count("applications", { candidate_id: id, organization_id: orgId });
+  if (appCount > 0) {
+    throw new ConflictError(
+      "This candidate has applications and can't be deleted. Reject or withdraw their applications instead to keep hiring history.",
+    );
+  }
+  await db.delete("candidates", id);
+}
+
+// Stream the candidate's resume BLOB (stored in MySQL). ORG-SCOPED: the
+// candidate must belong to the recruiter's org, so one company can never fetch
+// another company's candidate resume by guessing an id.
+export async function getCandidateResume(
+  orgId: number,
+  candidateId: string,
+): Promise<{ fileName: string; mimeType: string; content: Buffer }> {
+  const knex = getDB().knex();
+  const candidate = await knex("candidates")
+    .where({ id: candidateId, organization_id: orgId })
+    .first();
+  if (!candidate) throw new NotFoundError("Candidate", candidateId);
+  if (!candidate.resume_file_id) throw new NotFoundError("Resume");
+
+  const row = await knex("resume_files").where({ id: candidate.resume_file_id }).first();
+  if (!row) throw new NotFoundError("Resume");
+  return {
+    fileName: row.file_name,
+    mimeType: row.mime_type,
+    content: Buffer.isBuffer(row.content) ? row.content : Buffer.from(row.content),
+  };
 }
 
 export async function getCandidateApplications(

@@ -7,7 +7,7 @@ import { Router, Request, Response, NextFunction } from "express";
 import { authenticate, authorize } from "../middleware/auth.middleware";
 import { recordingUpload } from "../middleware/upload.middleware";
 import { sendSuccess, sendPaginated } from "../../utils/response";
-import { ValidationError } from "../../utils/errors";
+import { ValidationError, ForbiddenError } from "../../utils/errors";
 import * as interviewService from "../../services/interview/interview.service";
 import * as recordingService from "../../services/interview/recording.service";
 import type { InterviewStatus } from "@emp-recruit/shared";
@@ -86,12 +86,39 @@ router.post(
 );
 
 // ---------------------------------------------------------------------------
-// GET /:id — Get interview detail with panelists + feedback (HR/admin only)
+// GET /my-panel — interviews the CURRENT user is a panelist on (any role).
+// Must be declared before /:id so "my-panel" isn't parsed as an id.
 // ---------------------------------------------------------------------------
-router.get("/:id", authorize("org_admin", "hr_admin", "hr_manager"), async (req: Request, res: Response, next: NextFunction) => {
+router.get("/my-panel", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const interviews = await interviewService.listInterviewsForPanelist(
+      req.user!.empcloudOrgId,
+      req.user!.empcloudUserId,
+    );
+    return sendSuccess(res, interviews);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// GET /:id — Get interview detail with panelists + feedback.
+// Accessible to HR/admins AND to a user who is a panelist on this interview
+// (the service/route enforces panelist membership for non-admins below).
+// ---------------------------------------------------------------------------
+router.get("/:id", async (req: Request, res: Response, next: NextFunction) => {
   try {
     const orgId = req.user!.empcloudOrgId;
+    const role = req.user!.role;
+    const isAdmin = ["super_admin", "org_admin", "hr_admin", "hr_manager"].includes(role);
     const interview = await interviewService.getInterview(orgId, String(req.params.id));
+    // Non-admins may only view an interview they are a panelist on.
+    if (!isAdmin) {
+      const isPanelist = interview.panelists.some((p: any) => p.user_id === req.user!.empcloudUserId);
+      if (!isPanelist) {
+        return next(new ForbiddenError("You are not a panelist on this interview"));
+      }
+    }
     return sendSuccess(res, interview);
   } catch (err) {
     next(err);
@@ -159,6 +186,18 @@ router.put("/:id", authorize("org_admin", "hr_admin", "hr_manager"), async (req:
     });
 
     return sendSuccess(res, interview);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// DELETE /:id — Permanently delete an interview (HR/admin only)
+// ---------------------------------------------------------------------------
+router.delete("/:id", authorize("org_admin", "hr_admin", "hr_manager"), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    await interviewService.deleteInterview(req.user!.empcloudOrgId, String(req.params.id));
+    return sendSuccess(res, { message: "Interview deleted" });
   } catch (err) {
     next(err);
   }

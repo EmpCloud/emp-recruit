@@ -94,6 +94,16 @@ router.put("/:id", async (req: Request, res: Response, next: NextFunction) => {
   }
 });
 
+// DELETE /:id — remove an email template
+router.delete("/:id", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    await emailService.deleteTemplate(req.user!.empcloudOrgId, String(req.params.id));
+    sendSuccess(res, { message: "Template deleted" });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // POST /:id/preview
 router.post("/:id/preview", async (req: Request, res: Response, next: NextFunction) => {
   try {

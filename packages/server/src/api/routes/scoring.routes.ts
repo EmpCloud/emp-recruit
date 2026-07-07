@@ -11,6 +11,10 @@ const router = Router();
 // All scoring routes require authentication and HR roles
 router.use(authenticate, authorize("super_admin", "org_admin", "hr_admin", "hr_manager"));
 
+// AI provider config is server-managed (developer sets the key in .env). There
+// is intentionally no tenant-facing endpoint to view/configure it — the active
+// provider is logged once at server boot ("AI provider: <provider>:<model>").
+
 // POST /applications/:appId/score — score a single application
 router.post(
   "/applications/:appId/score",
@@ -29,14 +33,16 @@ router.post(
       });
       if (!app) throw new NotFoundError("Application", appId as string);
 
-      const result = await scoringService.scoreCandidate(
+      // Async: returns immediately with { status: 'processing' }; the report
+      // endpoint reflects completion. AI scoring can take ~30-90s.
+      const result = await scoringService.startScoring(
         orgId,
         app.candidate_id,
         app.job_id,
         appId as string,
       );
 
-      return sendSuccess(res, result);
+      return sendSuccess(res, result, 202);
     } catch (err) {
       next(err);
     }

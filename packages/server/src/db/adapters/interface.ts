@@ -58,6 +58,11 @@ export interface IDBAdapter {
 
   // Raw query escape hatch (use sparingly)
   raw<T>(query: string, params?: any[]): Promise<T>;
+
+  // Raw query-builder handle (Knex). Escape hatch for joins / BLOBs / complex
+  // queries the CRUD methods above can't express. Typed as `any` here so the
+  // interface stays driver-agnostic; the Knex adapter returns a real Knex.
+  knex(): any;
 }
 
 // ---------------------------------------------------------------------------

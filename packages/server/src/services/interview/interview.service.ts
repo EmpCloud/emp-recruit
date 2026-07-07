@@ -148,14 +148,43 @@ export async function updateInterview(
     throw new NotFoundError("Interview", id);
   }
 
-  // Convert scheduled_at to Date if present
+  // Convert scheduled_at to a MySQL-safe datetime literal if present (the client
+  // sends full ISO strings which the datetime column rejects).
   const updateData: Record<string, any> = { ...data };
   if (updateData.scheduled_at) {
-    updateData.scheduled_at = new Date(updateData.scheduled_at);
+    updateData.scheduled_at = toMysqlDateTime(updateData.scheduled_at);
   }
   const updated = await db.update<Interview>("interviews", id, updateData);
 
   return updated;
+}
+
+// Coerce an ISO/date string into MySQL's `YYYY-MM-DD HH:MM:SS` (datetime columns
+// reject the `...T...Z` ISO form). Mirrors the fix used for job closes_at.
+function toMysqlDateTime(value: unknown): string | null {
+  if (value == null || value === "") return null;
+  const d = value instanceof Date ? value : new Date(String(value));
+  if (isNaN(d.getTime())) return null;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return (
+    `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ` +
+    `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`
+  );
+}
+
+// Always-string variant for created_at/updated_at inserts (never null).
+function nowSql(d: Date = new Date()): string {
+  return toMysqlDateTime(d)!;
+}
+
+// ---------------------------------------------------------------------------
+// Delete an interview (and its cascade: panelists, feedback, recordings...).
+// ---------------------------------------------------------------------------
+export async function deleteInterview(orgId: number, id: string): Promise<void> {
+  const db = getDB();
+  const existing = await db.findOne<Interview>("interviews", { id, organization_id: orgId });
+  if (!existing) throw new NotFoundError("Interview", id);
+  await db.delete("interviews", id);
 }
 
 // ---------------------------------------------------------------------------
@@ -232,6 +261,53 @@ export async function listInterviews(
     perPage: result.limit,
     totalPages: result.totalPages,
   };
+}
+
+// ---------------------------------------------------------------------------
+// List the interviews a given user is a PANELIST on, with candidate/job labels,
+// their role, and whether they've submitted feedback yet. Powers the panelist
+// dashboard so an interviewer sees exactly what they need to review.
+// ---------------------------------------------------------------------------
+export async function listInterviewsForPanelist(
+  orgId: number,
+  userId: number,
+): Promise<any[]> {
+  const knex = getDB().knex();
+  const rows = await knex("interview_panelists as ip")
+    .join("interviews as i", "ip.interview_id", "i.id")
+    .join("applications as a", "i.application_id", "a.id")
+    .leftJoin("candidates as c", "a.candidate_id", "c.id")
+    .leftJoin("job_postings as j", "a.job_id", "j.id")
+    .where("ip.user_id", userId)
+    .andWhere("i.organization_id", orgId)
+    .select(
+      "i.id",
+      "i.title",
+      "i.type",
+      "i.round",
+      "i.status",
+      "i.scheduled_at",
+      "i.duration_minutes",
+      "i.location",
+      "i.meeting_link",
+      "ip.role as panelist_role",
+      "a.candidate_id",
+      knex.raw("TRIM(CONCAT(COALESCE(c.first_name,''),' ',COALESCE(c.last_name,''))) as candidate_name"),
+      "j.title as job_title",
+    )
+    .orderBy("i.scheduled_at", "desc");
+
+  // Mark which ones this user has already given feedback on.
+  const ids = rows.map((r: any) => r.id);
+  const feedbackRows = ids.length
+    ? await knex("interview_feedback")
+        .whereIn("interview_id", ids)
+        .andWhere("panelist_id", userId)
+        .select("interview_id")
+    : [];
+  const submitted = new Set(feedbackRows.map((f: any) => f.interview_id));
+
+  return rows.map((r: any) => ({ ...r, feedback_submitted: submitted.has(r.id) }));
 }
 
 // ---------------------------------------------------------------------------
@@ -325,7 +401,7 @@ export async function changeStatus(
 
   const updated = await db.update<Interview>("interviews", id, {
     status,
-    updated_at: new Date().toISOString(),
+    updated_at: nowSql(),
   });
 
   return updated;
@@ -365,7 +441,7 @@ export async function addPanelist(
     interview_id: interviewId,
     user_id: userId,
     role,
-    created_at: new Date().toISOString(),
+    created_at: nowSql(),
   });
 
   return panelist;
@@ -451,8 +527,8 @@ export async function submitFeedback(
     strengths: data.strengths || null,
     weaknesses: data.weaknesses || null,
     notes: data.notes || null,
-    submitted_at: now.toISOString(),
-    created_at: now.toISOString(),
+    submitted_at: nowSql(now),
+    created_at: nowSql(now),
   });
 
   return feedback;
@@ -600,7 +676,7 @@ export async function generateMeetingLink(
 
   await db.update<Interview>("interviews", interviewId, {
     meeting_link: meetingLink,
-    updated_at: new Date().toISOString(),
+    updated_at: nowSql(),
   });
 
   logger.info(`Meeting link generated for interview ${interviewId}: ${meetingLink}`);

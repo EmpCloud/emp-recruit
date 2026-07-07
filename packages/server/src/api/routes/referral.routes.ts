@@ -109,4 +109,18 @@ router.patch(
   },
 );
 
+// DELETE /:id — remove a referral
+router.delete(
+  "/:id",
+  authorize("super_admin", "org_admin", "hr_admin", "hr_manager"),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      await referralService.deleteReferral(req.user!.empcloudOrgId, String(req.params.id));
+      sendSuccess(res, { message: "Referral deleted" });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
 export { router as referralRoutes };

@@ -27,8 +27,18 @@ export async function getDashboard(orgId: number): Promise<{
   const hiredApps = await db.count("applications", { organization_id: orgId, stage: "hired" });
   const activeApplications = allApps - rejectedApps - withdrawnApps - hiredApps;
 
-  // Recent hires = hired in last 30 days
-  const recentHires = hiredApps; // simplified — count all hired
+  // Recent hires = candidates actually moved to 'hired' in the last 30 days.
+  // The real hire moment is the stage-history row (to_stage='hired'), not the
+  // application's updated_at (which changes on any later edit).
+  const knex = db.knex();
+  const recentRow = await knex("application_stage_history as h")
+    .join("applications as a", "h.application_id", "a.id")
+    .where("a.organization_id", orgId)
+    .andWhere("h.to_stage", "hired")
+    .andWhere("h.created_at", ">=", knex.raw("DATE_SUB(NOW(), INTERVAL 30 DAY)"))
+    .countDistinct("h.application_id as c")
+    .first();
+  const recentHires = Number((recentRow as any)?.c ?? 0);
 
   return { openJobs, totalCandidates, activeApplications, recentHires };
 }
@@ -64,34 +74,40 @@ export async function getTimeToHire(orgId: number): Promise<{
   hiredCount: number;
 }> {
   const db = getDB();
+  const knex = db.knex();
 
-  // Get all hired applications with their applied_at date
-  const result = await db.findMany<{
-    id: string;
-    applied_at: string;
-    updated_at: string;
-    stage: string;
-  }>("applications", {
-    filters: { organization_id: orgId, stage: "hired" },
-    limit: 1000,
-  });
+  // Time-to-hire = days from applied_at to the ACTUAL hire moment. The hire
+  // moment is the earliest stage-history row with to_stage='hired' (not the
+  // application's updated_at, which changes on any later edit). Fall back to
+  // updated_at only if no history row exists (legacy data).
+  const rows = await knex("applications as a")
+    .leftJoin(
+      knex("application_stage_history")
+        .select("application_id")
+        .min("created_at as hired_at")
+        .where("to_stage", "hired")
+        .groupBy("application_id")
+        .as("h"),
+      "h.application_id",
+      "a.id",
+    )
+    .where("a.organization_id", orgId)
+    .andWhere("a.stage", "hired")
+    .select("a.applied_at", "a.updated_at", "h.hired_at")
+    .limit(5000);
 
-  if (result.data.length === 0) {
-    return { averageDays: 0, hiredCount: 0 };
-  }
+  if (rows.length === 0) return { averageDays: 0, hiredCount: 0 };
 
   let totalDays = 0;
-  for (const app of result.data) {
+  for (const app of rows as any[]) {
     const appliedDate = new Date(app.applied_at);
-    const hiredDate = new Date(app.updated_at);
-    const diffMs = hiredDate.getTime() - appliedDate.getTime();
-    const diffDays = Math.max(1, Math.round(diffMs / (1000 * 60 * 60 * 24)));
+    const hiredDate = new Date(app.hired_at || app.updated_at);
+    const diffDays = Math.max(1, Math.round((hiredDate.getTime() - appliedDate.getTime()) / 86_400_000));
     totalDays += diffDays;
   }
 
-  const averageDays = Math.round(totalDays / result.data.length);
-
-  return { averageDays, hiredCount: result.data.length };
+  const averageDays = Math.round(totalDays / rows.length);
+  return { averageDays, hiredCount: rows.length };
 }
 
 // ---------------------------------------------------------------------------

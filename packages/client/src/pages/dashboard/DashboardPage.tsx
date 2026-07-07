@@ -12,6 +12,10 @@ import {
 import { apiGet } from "@/api/client";
 import type { JobPosting, Candidate, PaginatedResponse } from "@emp-recruit/shared";
 import { cn, formatDate } from "@/lib/utils";
+import { MyPanelInterviews } from "@/components/MyPanelInterviews";
+import { getUser } from "@/lib/auth-store";
+
+const ADMIN_ROLES = ["super_admin", "org_admin", "hr_admin", "hr_manager"];
 
 const STAGE_LABELS: Record<string, { label: string; color: string }> = {
   applied: { label: "Applied", color: "from-blue-400 to-blue-500" },
@@ -41,54 +45,69 @@ interface DashboardStats {
 }
 
 export function DashboardPage() {
+  // Recruitment stats are HR/admin-only endpoints. For non-admin users (e.g.
+  // interviewers/panelists) we skip those queries entirely so they don't 403 —
+  // they see their panelist section (below) instead of an all-zeros dashboard.
+  const isAdmin = ADMIN_ROLES.includes(getUser()?.role || "employee");
+
   // Fetch open jobs count
   const { data: jobsData } = useQuery({
     queryKey: ["dashboard-jobs"],
     queryFn: () => apiGet<PaginatedResponse<JobPosting>>("/jobs", { status: "open", perPage: 1 }),
+    enabled: isAdmin,
   });
 
   // Fetch all jobs for total count
   const { data: allJobsData } = useQuery({
     queryKey: ["dashboard-all-jobs"],
     queryFn: () => apiGet<PaginatedResponse<JobPosting>>("/jobs", { perPage: 1 }),
+    enabled: isAdmin,
   });
 
   // Fetch candidates count
   const { data: candidatesData } = useQuery({
     queryKey: ["dashboard-candidates"],
     queryFn: () => apiGet<PaginatedResponse<Candidate>>("/candidates", { perPage: 1 }),
+    enabled: isAdmin,
   });
 
   // Fetch recent applications
   const { data: appsData } = useQuery({
     queryKey: ["dashboard-applications"],
     queryFn: () => apiGet<PaginatedResponse<any>>("/applications", { perPage: 10, sort: "applied_at", order: "desc" }),
+    enabled: isAdmin,
   });
 
   // Fetch application stage distribution via multiple stage queries
   const { data: appliedData } = useQuery({
     queryKey: ["dashboard-stage-applied"],
     queryFn: () => apiGet<PaginatedResponse<any>>("/applications", { stage: "applied", perPage: 1 }),
+    enabled: isAdmin,
   });
   const { data: screenedData } = useQuery({
     queryKey: ["dashboard-stage-screened"],
     queryFn: () => apiGet<PaginatedResponse<any>>("/applications", { stage: "screened", perPage: 1 }),
+    enabled: isAdmin,
   });
   const { data: interviewData } = useQuery({
     queryKey: ["dashboard-stage-interview"],
     queryFn: () => apiGet<PaginatedResponse<any>>("/applications", { stage: "interview", perPage: 1 }),
+    enabled: isAdmin,
   });
   const { data: offerData } = useQuery({
     queryKey: ["dashboard-stage-offer"],
     queryFn: () => apiGet<PaginatedResponse<any>>("/applications", { stage: "offer", perPage: 1 }),
+    enabled: isAdmin,
   });
   const { data: hiredData } = useQuery({
     queryKey: ["dashboard-stage-hired"],
     queryFn: () => apiGet<PaginatedResponse<any>>("/applications", { stage: "hired", perPage: 1 }),
+    enabled: isAdmin,
   });
   const { data: rejectedData } = useQuery({
     queryKey: ["dashboard-stage-rejected"],
     queryFn: () => apiGet<PaginatedResponse<any>>("/applications", { stage: "rejected", perPage: 1 }),
+    enabled: isAdmin,
   });
 
   const openJobsCount = jobsData?.data?.total ?? 0;
@@ -149,6 +168,12 @@ export function DashboardPage() {
         <p className="mt-1 text-sm text-gray-500">Recruitment overview and pipeline metrics.</p>
       </div>
 
+      {/* Panelist: interviews assigned to me (shows for anyone who's a panelist) */}
+      <MyPanelInterviews />
+
+      {/* Recruitment metrics — HR/admin only. */}
+      {isAdmin && (
+      <>
       {/* Stat cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {statCards.map((stat) => (
@@ -261,6 +286,15 @@ export function DashboardPage() {
           )}
         </div>
       </div>
+      </>
+      )}
+
+      {/* Non-admin (panelist/employee): a simple empty-state if no assigned interviews. */}
+      {!isAdmin && (
+        <p className="rounded-xl border border-dashed border-gray-200 bg-white px-6 py-10 text-center text-sm text-gray-500">
+          Your assigned interviews appear above. Check <span className="font-medium text-gray-700">My Interviews</span> in the sidebar for the full list.
+        </p>
+      )}
     </div>
   );
 }

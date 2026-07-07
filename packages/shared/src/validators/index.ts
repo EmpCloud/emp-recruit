@@ -129,7 +129,10 @@ export const createApplicationSchema = z.object({
 });
 
 export const moveStageSchema = z.object({
-  stage: z.nativeEnum(ApplicationStage),
+  // Accept a built-in stage OR a custom pipeline-stage slug. The service
+  // validates that the slug is a real stage for the org (built-in or custom),
+  // so this stays a bounded slug string rather than a fixed enum.
+  stage: z.string().min(1).max(100).regex(/^[a-z0-9_-]+$/i, "Invalid stage slug"),
   notes: z.string().optional(),
   rejection_reason: z.string().optional(),
 });
@@ -184,17 +187,22 @@ export const createOfferSchema = z.object({
   approver_ids: z.array(z.number().int()).optional(),
 });
 
-export const updateOfferSchema = z.object({
-  salary_amount: z.number().int().min(0).optional(),
-  salary_currency: z.string().length(3).optional(),
-  joining_date: z.string().optional(),
-  expiry_date: z.string().optional(),
-  job_title: z.string().min(2).max(200).optional(),
-  department: z.string().max(100).optional(),
-  benefits: z.string().optional(),
-  notes: z.string().optional(),
-  status: z.nativeEnum(OfferStatus).optional(),
-});
+// Only the editable content fields of a DRAFT offer. Status transitions must go
+// through the dedicated endpoints (submit-approval / approve / reject / accept /
+// decline) — allowing `status` here would let a client bypass the approval
+// workflow via a plain PUT (mass-assignment). `.strict()` rejects unknown keys.
+export const updateOfferSchema = z
+  .object({
+    salary_amount: z.number().int().min(0).optional(),
+    salary_currency: z.string().length(3).optional(),
+    joining_date: z.string().optional(),
+    expiry_date: z.string().optional(),
+    job_title: z.string().min(2).max(200).optional(),
+    department: z.string().max(100).optional(),
+    benefits: z.string().optional(),
+    notes: z.string().optional(),
+  })
+  .strict();
 
 // ---------------------------------------------------------------------------
 // Onboarding

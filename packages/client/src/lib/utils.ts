@@ -5,6 +5,24 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+// Turn any API/AI error into a clean, user-safe message. Prefers the backend's
+// friendly message (already sanitized server-side); otherwise maps common
+// network/status cases to plain language. Never surfaces raw provider text.
+export function aiErrorMessage(err: any, fallback = "Something went wrong. Please try again."): string {
+  const backend = err?.response?.data?.error?.message;
+  // The server already sanitizes AI errors, so trust a short backend message.
+  if (typeof backend === "string" && backend.length > 0 && backend.length < 200) {
+    return backend;
+  }
+  const status = err?.response?.status;
+  if (status === 503 || status === 429) return "The AI service is busy right now. Please wait a few seconds and try again.";
+  if (status === 504) return "The AI took too long to respond. Please try again in a moment.";
+  if (err?.code === "ERR_NETWORK" || err?.message === "Network Error") {
+    return "Couldn't reach the server. Check your connection and try again.";
+  }
+  return fallback;
+}
+
 export function getInitials(name: string): string {
   return name
     .split(" ")

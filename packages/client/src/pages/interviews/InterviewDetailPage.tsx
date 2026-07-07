@@ -21,11 +21,19 @@ import {
   Copy,
   CheckCircle,
   Download,
+  UserPlus,
+  Search,
+  X,
+  Check,
+  Loader2,
+  Pencil,
 } from "lucide-react";
 import { api, apiGet, apiPost, apiPut, apiPatch, apiDelete } from "@/api/client";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { NotetakerPanel } from "@/components/NotetakerPanel";
 import { cn, formatDate } from "@/lib/utils";
 import { useAuthStore } from "@/lib/auth-store";
+import toast from "react-hot-toast";
 import type {
   Interview,
   InterviewPanelist,
@@ -40,6 +48,27 @@ interface InterviewDetail extends Interview {
   candidate_name: string;
   job_title: string;
   application: { id: string; candidate_id: string; job_id: string } | null;
+}
+
+interface OrgUser {
+  id: number;
+  first_name: string;
+  last_name: string;
+  email: string;
+  role: string;
+  designation: string | null;
+}
+
+// Panelist roles offered in the picker.
+const PANELIST_ROLES = ["interviewer", "hiring_manager", "observer", "recruiter"] as const;
+
+function fullName(u?: { first_name?: string; last_name?: string } | null): string {
+  if (!u) return "";
+  return `${u.first_name || ""} ${u.last_name || ""}`.trim();
+}
+function userInitials(u?: { first_name?: string; last_name?: string } | null): string {
+  if (!u) return "?";
+  return ((u.first_name?.[0] || "") + (u.last_name?.[0] || "")).toUpperCase() || "?";
 }
 
 interface Recording {
@@ -804,6 +833,58 @@ export function InterviewDetailPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["interview", id] }),
   });
 
+  // --- Edit / delete interview ---------------------------------------------
+  const [showEdit, setShowEdit] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  const deleteMutation = useMutation({
+    mutationFn: () => apiDelete(`/interviews/${id}`),
+    onSuccess: () => {
+      toast.success("Interview deleted");
+      queryClient.invalidateQueries({ queryKey: ["interviews"] });
+      navigate("/interviews");
+    },
+    onError: (err: any) => {
+      setShowDeleteConfirm(false);
+      toast.error(err?.response?.data?.error?.message || "Could not delete interview");
+    },
+  });
+
+  // --- Panelists ------------------------------------------------------------
+  const [showAddPanelist, setShowAddPanelist] = useState(false);
+
+  // Org users serve two purposes: the "add panelist" picker AND resolving each
+  // panelist's user_id to a real name (the interview payload only has user_id).
+  const { data: orgUsersData } = useQuery({
+    queryKey: ["org-users", "panelist"],
+    queryFn: () => apiGet<OrgUser[]>("/organizations/users"),
+    enabled: !!id,
+  });
+  const orgUsers: OrgUser[] = (orgUsersData?.data as any) ?? [];
+  const usersById = new Map(orgUsers.map((u) => [u.id, u]));
+
+  const addPanelistMutation = useMutation({
+    mutationFn: (payload: { user_id: number; role: string }) =>
+      apiPost(`/interviews/${id}/panelists`, payload),
+    onSuccess: () => {
+      toast.success("Panelist added");
+      setShowAddPanelist(false);
+      queryClient.invalidateQueries({ queryKey: ["interview", id] });
+    },
+    onError: (err: any) =>
+      toast.error(err?.response?.data?.error?.message || "Could not add panelist"),
+  });
+
+  const removePanelistMutation = useMutation({
+    mutationFn: (userId: number) => apiDelete(`/interviews/${id}/panelists/${userId}`),
+    onSuccess: () => {
+      toast.success("Panelist removed");
+      queryClient.invalidateQueries({ queryKey: ["interview", id] });
+    },
+    onError: (err: any) =>
+      toast.error(err?.response?.data?.error?.message || "Could not remove panelist"),
+  });
+
   if (isLoading) {
     return (
       <div className="flex h-64 items-center justify-center text-gray-500">
@@ -842,14 +923,28 @@ export function InterviewDetailPage() {
               {interview.candidate_name} &mdash; {interview.job_title}
             </p>
           </div>
-          <span
-            className={cn(
-              "rounded-full px-3 py-1 text-sm font-medium capitalize",
-              STATUS_COLORS[interview.status] || "bg-gray-100 text-gray-800",
-            )}
-          >
-            {interview.status.replace("_", " ")}
-          </span>
+          <div className="flex items-center gap-2">
+            <span
+              className={cn(
+                "rounded-full px-3 py-1 text-sm font-medium capitalize",
+                STATUS_COLORS[interview.status] || "bg-gray-100 text-gray-800",
+              )}
+            >
+              {interview.status.replace("_", " ")}
+            </span>
+            <button
+              onClick={() => setShowEdit(true)}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            >
+              <Pencil className="h-4 w-4" /> Edit
+            </button>
+            <button
+              onClick={() => setShowDeleteConfirm(true)}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-red-300 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50"
+            >
+              <Trash2 className="h-4 w-4" /> Delete
+            </button>
+          </div>
         </div>
       </div>
 
@@ -894,6 +989,9 @@ export function InterviewDetailPage() {
         )}
       </div>
 
+      {/* AI Interview Assistant (notetaker + transcript evaluation) */}
+      {id && <NotetakerPanel interviewId={id} hasMeetingLink={!!interview.meeting_link} />}
+
       {/* Status actions */}
       {interview.status !== "completed" && interview.status !== "cancelled" && (
         <div className="flex items-center gap-3">
@@ -933,27 +1031,45 @@ export function InterviewDetailPage() {
           <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
             <Users className="h-5 w-5 text-gray-400" /> Panelists ({interview.panelists.length})
           </h2>
+          <button
+            onClick={() => setShowAddPanelist(true)}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-700"
+          >
+            <UserPlus className="h-4 w-4" /> Add panelist
+          </button>
         </div>
         <div className="divide-y divide-gray-100">
           {interview.panelists.length === 0 && (
-            <p className="px-6 py-4 text-sm text-gray-500">No panelists assigned yet.</p>
+            <div className="px-6 py-8 text-center">
+              <Users className="mx-auto mb-2 h-8 w-8 text-gray-300" />
+              <p className="text-sm text-gray-500">No panelists assigned yet.</p>
+              <button
+                onClick={() => setShowAddPanelist(true)}
+                className="mt-2 text-sm font-medium text-brand-600 hover:underline"
+              >
+                Add the first panelist
+              </button>
+            </div>
           )}
           {interview.panelists.map((panelist) => {
             const fb = interview.feedback.find((f) => f.panelist_id === panelist.user_id);
+            const u = usersById.get(panelist.user_id);
+            const name = fullName(u) || `User #${panelist.user_id}`;
             return (
               <div key={panelist.id} className="flex items-center justify-between px-6 py-3">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-100 text-xs font-medium text-brand-700">
-                    {panelist.user_id}
+                <div className="flex min-w-0 items-center gap-3">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-100 text-xs font-semibold text-brand-700">
+                    {userInitials(u)}
                   </div>
-                  <div>
-                    <p className="text-sm font-medium text-gray-900">
-                      User #{panelist.user_id}
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-gray-900">{name}</p>
+                    <p className="truncate text-xs text-gray-500">
+                      <span className="capitalize">{(panelist.role || "interviewer").replace(/_/g, " ")}</span>
+                      {u?.email ? ` · ${u.email}` : ""}
                     </p>
-                    <p className="text-xs text-gray-500 capitalize">{panelist.role}</p>
                   </div>
                 </div>
-                <div>
+                <div className="flex shrink-0 items-center gap-2">
                   {fb ? (
                     <span className="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800">
                       Feedback submitted
@@ -963,12 +1079,51 @@ export function InterviewDetailPage() {
                       Pending
                     </span>
                   )}
+                  <button
+                    onClick={() => removePanelistMutation.mutate(panelist.user_id)}
+                    disabled={removePanelistMutation.isPending}
+                    title="Remove panelist"
+                    className="rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
                 </div>
               </div>
             );
           })}
         </div>
       </div>
+
+      {/* Add panelist modal */}
+      {showAddPanelist && (
+        <AddPanelistModal
+          orgUsers={orgUsers}
+          existingUserIds={new Set(interview.panelists.map((p) => p.user_id))}
+          submitting={addPanelistMutation.isPending}
+          onAdd={(user_id, role) => addPanelistMutation.mutate({ user_id, role })}
+          onClose={() => setShowAddPanelist(false)}
+        />
+      )}
+
+      {showEdit && (
+        <EditInterviewModal
+          interview={interview}
+          onSaved={() => { setShowEdit(false); queryClient.invalidateQueries({ queryKey: ["interview", id] }); }}
+          onClose={() => setShowEdit(false)}
+        />
+      )}
+
+      <ConfirmDialog
+        open={showDeleteConfirm}
+        variant="danger"
+        title="Delete this interview?"
+        message="This permanently removes the interview along with its panelists and feedback. This cannot be undone."
+        confirmLabel="Delete interview"
+        cancelLabel="Cancel"
+        loading={deleteMutation.isPending}
+        onConfirm={() => deleteMutation.mutate()}
+        onCancel={() => setShowDeleteConfirm(false)}
+      />
 
       {/* Recording Section */}
       <RecordingSection interviewId={interview.id} />
@@ -992,6 +1147,7 @@ export function InterviewDetailPage() {
           </h2>
           {interview.feedback.map((fb) => {
             const RecIcon = RECOMMENDATION_ICONS[fb.recommendation] || Star;
+            const fbUser = usersById.get(fb.panelist_id);
             return (
               <div
                 key={fb.id}
@@ -1000,10 +1156,10 @@ export function InterviewDetailPage() {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <div className="flex h-7 w-7 items-center justify-center rounded-full bg-gray-100 text-xs font-medium text-gray-700">
-                      {fb.panelist_id}
+                      {fbUser ? userInitials(fbUser) : fb.panelist_id}
                     </div>
                     <span className="text-sm font-medium text-gray-900">
-                      Panelist #{fb.panelist_id}
+                      {fbUser ? fullName(fbUser) : `Panelist #${fb.panelist_id}`}
                     </span>
                   </div>
                   <span
@@ -1088,6 +1244,248 @@ export function InterviewDetailPage() {
           </Link>
         </div>
       )}
+    </div>
+  );
+}
+
+// ===========================================================================
+// AddPanelistModal — pick an org user (searchable) + a role, then add them as
+// a panelist. Users already on the panel are shown as disabled/"Added".
+// ===========================================================================
+function AddPanelistModal({
+  orgUsers,
+  existingUserIds,
+  submitting,
+  onAdd,
+  onClose,
+}: {
+  orgUsers: OrgUser[];
+  existingUserIds: Set<number>;
+  submitting: boolean;
+  onAdd: (userId: number, role: string) => void;
+  onClose: () => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [role, setRole] = useState<string>("interviewer");
+
+  const q = query.trim().toLowerCase();
+  const filtered = orgUsers.filter((u) => {
+    if (!q) return true;
+    return (
+      fullName(u).toLowerCase().includes(q) ||
+      (u.email || "").toLowerCase().includes(q) ||
+      (u.designation || "").toLowerCase().includes(q)
+    );
+  });
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4">
+          <h3 className="flex items-center gap-2 text-base font-semibold text-gray-900">
+            <UserPlus className="h-5 w-5 text-brand-600" /> Add panelist
+          </h3>
+          <button onClick={onClose} className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="p-5">
+          {/* Role */}
+          <label className="mb-1 block text-sm font-medium text-gray-700">Role on this interview</label>
+          <select
+            value={role}
+            onChange={(e) => setRole(e.target.value)}
+            className="mb-4 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm capitalize focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+          >
+            {PANELIST_ROLES.map((r) => (
+              <option key={r} value={r}>{r.replace(/_/g, " ")}</option>
+            ))}
+          </select>
+
+          {/* User search */}
+          <label className="mb-1 block text-sm font-medium text-gray-700">Team member</label>
+          <div className="relative mb-2">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+            <input
+              type="text"
+              value={query}
+              autoFocus
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search by name, email, or title…"
+              className="w-full rounded-lg border border-gray-300 py-2 pl-10 pr-3 text-sm placeholder:text-gray-400 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+            />
+          </div>
+
+          <div className="max-h-64 divide-y divide-gray-100 overflow-y-auto rounded-lg border border-gray-200">
+            {filtered.length === 0 ? (
+              <p className="px-3 py-6 text-center text-sm text-gray-500">No matching team members.</p>
+            ) : (
+              filtered.map((u) => {
+                const already = existingUserIds.has(u.id);
+                const selected = selectedId === u.id;
+                return (
+                  <button
+                    key={u.id}
+                    type="button"
+                    disabled={already}
+                    onClick={() => setSelectedId(u.id)}
+                    className={cn(
+                      "flex w-full items-center gap-3 px-3 py-2.5 text-left",
+                      already ? "cursor-not-allowed opacity-50" : selected ? "bg-brand-50" : "hover:bg-gray-50",
+                    )}
+                  >
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-100 text-xs font-semibold text-brand-700">
+                      {userInitials(u)}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium text-gray-900">{fullName(u) || u.email}</p>
+                      <p className="truncate text-xs text-gray-500">
+                        {u.designation || u.role?.replace(/_/g, " ")}{u.email ? ` · ${u.email}` : ""}
+                      </p>
+                    </div>
+                    {already ? (
+                      <span className="shrink-0 text-xs font-medium text-gray-400">Added</span>
+                    ) : selected ? (
+                      <Check className="h-4 w-4 shrink-0 text-brand-600" />
+                    ) : null}
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-2 border-t border-gray-200 px-5 py-4">
+          <button
+            onClick={onClose}
+            className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => selectedId != null && onAdd(selectedId, role)}
+            disabled={selectedId == null || submitting}
+            className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
+          >
+            {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />}
+            Add panelist
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ===========================================================================
+// EditInterviewModal — reschedule / edit an interview's details. Calls
+// PUT /interviews/:id.
+// ===========================================================================
+const EDIT_TYPES = ["phone", "video", "onsite", "assignment", "panel"];
+
+function EditInterviewModal({
+  interview,
+  onSaved,
+  onClose,
+}: {
+  interview: InterviewDetail;
+  onSaved: () => void;
+  onClose: () => void;
+}) {
+  // Split the stored ISO datetime into date + time inputs.
+  const dt = interview.scheduled_at ? new Date(interview.scheduled_at) : new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const [title, setTitle] = useState(interview.title || "");
+  const [type, setType] = useState(interview.type || "video");
+  const [date, setDate] = useState(`${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`);
+  const [time, setTime] = useState(`${pad(dt.getHours())}:${pad(dt.getMinutes())}`);
+  const [duration, setDuration] = useState(String(interview.duration_minutes ?? 60));
+  const [location, setLocation] = useState(interview.location || "");
+  const [meetingLink, setMeetingLink] = useState(interview.meeting_link || "");
+  const [notes, setNotes] = useState(interview.notes || "");
+
+  const mutation = useMutation({
+    mutationFn: () => {
+      const scheduled_at = new Date(`${date}T${time || "10:00"}:00`).toISOString();
+      return apiPut(`/interviews/${interview.id}`, {
+        title,
+        type,
+        scheduled_at,
+        duration_minutes: Number(duration),
+        location: location || null,
+        meeting_link: meetingLink || null,
+        notes: notes || null,
+      });
+    },
+    onSuccess: () => { toast.success("Interview updated"); onSaved(); },
+    onError: (err: any) => toast.error(err?.response?.data?.error?.message || "Could not update interview"),
+  });
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4">
+          <h3 className="text-base font-semibold text-gray-900">Edit interview</h3>
+          <button onClick={onClose} className="rounded-lg p-1 text-gray-400 hover:bg-gray-100"><X className="h-5 w-5" /></button>
+        </div>
+        <div className="space-y-3 p-5">
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700">Title</label>
+            <input value={title} onChange={(e) => setTitle(e.target.value)}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="mb-1 block text-sm font-medium text-gray-700">Type</label>
+              <select value={type} onChange={(e) => setType(e.target.value as any)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm capitalize focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500">
+                {EDIT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-gray-700">Duration (min)</label>
+              <input type="number" min={15} max={480} value={duration} onChange={(e) => setDuration(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="mb-1 block text-sm font-medium text-gray-700">Date</label>
+              <input type="date" value={date} onChange={(e) => setDate(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-gray-700">Time</label>
+              <input type="time" value={time} onChange={(e) => setTime(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" />
+            </div>
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700">Location</label>
+            <input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Office / room, or leave blank for remote"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" />
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700">Meeting link</label>
+            <input value={meetingLink} onChange={(e) => setMeetingLink(e.target.value)} placeholder="https://…"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" />
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700">Notes</label>
+            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500" />
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 border-t border-gray-200 px-5 py-4">
+          <button onClick={onClose} className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">Cancel</button>
+          <button onClick={() => mutation.mutate()} disabled={mutation.isPending || !title.trim()}
+            className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50">
+            {mutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+            Save changes
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
