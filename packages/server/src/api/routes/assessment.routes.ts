@@ -98,6 +98,31 @@ router.post(
   },
 );
 
+// POST /generate — AI-generate assessment questions (does not save; returns a
+// draft the recruiter can review/edit then create).
+router.post(
+  "/generate",
+  authenticate,
+  authorize("super_admin", "org_admin", "hr_admin", "hr_manager"),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const b = req.body || {};
+      const orgId = req.user!.empcloudOrgId;
+      const result = await assessmentService.generateAssessment(orgId, {
+        job_id: b.job_id || undefined,
+        topic: b.topic || undefined,
+        assessment_type: b.assessment_type || "cognitive",
+        num_questions: Number(b.num_questions) || 10,
+        difficulty: ["easy", "medium", "hard"].includes(b.difficulty) ? b.difficulty : "medium",
+        question_type: ["multiple_choice", "true_false", "mixed"].includes(b.question_type) ? b.question_type : "multiple_choice",
+      });
+      sendSuccess(res, result);
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
 // GET /templates — List templates
 router.get(
   "/templates",

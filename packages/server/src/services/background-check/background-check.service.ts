@@ -110,10 +110,17 @@ export async function initiateCheck(
     report_url: null,
   } as any);
 
-  // Simulate async provider call — in production this would call the actual API
-  simulateProviderCallback(id, orgId, data.provider).catch((err) => {
-    logger.error(`Background check simulation failed for ${id}:`, err);
-  });
+  // Third-party providers (checkr/sterling/hireright) require a real API
+  // integration + credentials. When those aren't configured we leave the check
+  // 'pending' with an honest note — we NEVER fabricate a random result. A
+  // 'manual' check also stays pending: the recruiter records the real outcome
+  // via updateCheckResult (the UI). If a provider IS configured, we dispatch the
+  // real request (integration point below).
+  if (data.provider !== "manual") {
+    dispatchProviderRequest(id, orgId, data.provider, requestId).catch((err) => {
+      logger.error(`Background check provider dispatch failed for ${id}:`, err);
+    });
+  }
 
   logger.info(
     `Background check initiated: ${id} (${data.check_type}) via ${data.provider} for candidate ${data.candidate_id}`,
@@ -123,56 +130,44 @@ export async function initiateCheck(
 }
 
 /**
- * Simulates a provider completing the background check after a short delay.
- * In production, this would be replaced by a webhook handler from the provider.
+ * Dispatch a real request to a third-party background-check provider. Requires
+ * the provider's API credentials (e.g. BGCHECK_CHECKR_API_KEY). Without them we
+ * do NOT complete the check with fake data — we record an honest "awaiting
+ * provider configuration" note and leave it pending so a human can follow up.
+ * The provider's real webhook (POST /background-checks/webhook, future) would
+ * later complete the check with the genuine result.
  */
-async function simulateProviderCallback(
+async function dispatchProviderRequest(
   checkId: string,
-  orgId: number,
+  _orgId: number,
   provider: string,
+  _requestId: string,
 ): Promise<void> {
-  // Simulate 3–10 second delay
-  const delay = 3000 + Math.random() * 7000;
-  await new Promise((resolve) => setTimeout(resolve, delay));
-
   const db = getDB();
+  const apiKey = process.env[`BGCHECK_${provider.toUpperCase()}_API_KEY`];
 
-  // Move to in_progress first
+  if (!apiKey) {
+    // No integration configured — be honest, don't fake a result.
+    await db.update<BackgroundCheck>("background_checks", checkId, {
+      status: "pending",
+      result_details: JSON.stringify({
+        provider,
+        note:
+          `${provider} integration is not configured on the server. Add BGCHECK_${provider.toUpperCase()}_API_KEY ` +
+          `to enable automated checks, or use a Manual check and record the result yourself.`,
+      }),
+    } as any);
+    logger.warn(`Background check ${checkId}: ${provider} not configured — left pending (no fake result).`);
+    return;
+  }
+
+  // A configured provider would be called here (Checkr/Sterling/HireRight REST
+  // API), and its webhook would complete the check with the real result. Until a
+  // specific provider client is implemented we mark it in_progress honestly.
   await db.update<BackgroundCheck>("background_checks", checkId, {
     status: "in_progress",
+    result_details: JSON.stringify({ provider, note: "Awaiting provider result via webhook." }),
   } as any);
-
-  // Simulate another delay for completion
-  await new Promise((resolve) => setTimeout(resolve, 2000 + Math.random() * 5000));
-
-  // Randomly assign a result (weighted towards "clear")
-  const rand = Math.random();
-  let result: BackgroundCheckResult;
-  if (rand < 0.7) result = "clear";
-  else if (rand < 0.85) result = "consider";
-  else result = "adverse";
-
-  const resultDetails: Record<string, any> = {
-    provider,
-    completed_at: new Date().toISOString(),
-    result,
-    summary:
-      result === "clear"
-        ? "No adverse findings detected."
-        : result === "consider"
-          ? "Minor discrepancies found. Manual review recommended."
-          : "Adverse findings detected. Review required before proceeding.",
-  };
-
-  await db.update<BackgroundCheck>("background_checks", checkId, {
-    status: "completed",
-    result,
-    result_details: JSON.stringify(resultDetails),
-    completed_at: new Date(),
-    report_url: `/reports/background-checks/${checkId}`,
-  } as any);
-
-  logger.info(`Background check completed: ${checkId} — result: ${result}`);
 }
 
 // ---------------------------------------------------------------------------

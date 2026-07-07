@@ -12,6 +12,7 @@ import type {
   ScoringRecommendation,
 } from "@emp-recruit/shared";
 import { logger } from "../../utils/logger";
+import { parseAndScore, loadResumeText } from "../portal/candidate-ai.service";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -24,6 +25,8 @@ interface ScoreResult {
   matchedSkills: string[];
   missingSkills: string[];
   recommendation: ScoringRecommendation;
+  summary?: string | null;
+  usedAI?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -179,6 +182,60 @@ export function extractSkills(resumeText: string): ExtractedSkill[] {
 // ---------------------------------------------------------------------------
 
 /**
+ * Kick off scoring for an application WITHOUT blocking. AI scoring can take
+ * 30-90s with a reasoning model, so we immediately upsert a 'processing' score
+ * row and run the real scoring in the background. The UI polls GET the report
+ * and shows the result when status flips to 'completed' (or 'failed').
+ */
+export async function startScoring(
+  orgId: number,
+  candidateId: string,
+  jobId: string,
+  applicationId: string,
+): Promise<{ status: "processing" }> {
+  const db = getDB();
+
+  // Mark processing (upsert) so the UI can show a spinner immediately.
+  const existing = await db.findOne<CandidateScore>("candidate_scores", {
+    application_id: applicationId,
+    organization_id: orgId,
+  });
+  if (existing) {
+    await db.update("candidate_scores", existing.id, { status: "processing" } as any);
+  } else {
+    await db.create("candidate_scores", {
+      id: uuidv4(),
+      organization_id: orgId,
+      application_id: applicationId,
+      candidate_id: candidateId,
+      job_id: jobId,
+      overall_score: 0,
+      skills_score: 0,
+      experience_score: 0,
+      matched_skills: "[]",
+      missing_skills: "[]",
+      recommendation: "weak_match",
+      status: "processing",
+      scored_at: new Date(),
+    } as any);
+  }
+
+  // Run the real scoring in the background; never block the request.
+  scoreCandidate(orgId, candidateId, jobId, applicationId)
+    .then(() => logger.info(`Async scoring completed for application ${applicationId}`))
+    .catch(async (err) => {
+      logger.warn(`Async scoring failed for application ${applicationId}: ${err.message}`);
+      const row = await db.findOne<CandidateScore>("candidate_scores", {
+        application_id: applicationId,
+        organization_id: orgId,
+      });
+      if (row) await db.update("candidate_scores", row.id, { status: "failed" } as any).catch(() => {});
+    });
+
+  return { status: "processing" };
+}
+
+/**
  * Score a single candidate against a job posting.
  * Returns the computed score and persists it to the database.
  */
@@ -211,56 +268,62 @@ export async function scoreCandidate(
   });
   if (!application) throw new NotFoundError("Application", applicationId);
 
-  // Gather candidate skills from profile + resume
-  // Handle both string (raw JSON) and already-parsed array from MySQL JSON column
-  const candidateSkills: string[] = candidate.skills
-    ? (typeof candidate.skills === "string" ? JSON.parse(candidate.skills) : candidate.skills)
-    : [];
-
-  // If candidate has a resume, extract skills from it too
-  let resumeSkills: string[] = [];
-  if (candidate.resume_path) {
-    try {
-      const resumeText = await parseResumeText(candidate.resume_path);
-      const extracted = extractSkills(resumeText);
-      resumeSkills = extracted.map((e) => e.skill);
-    } catch (err) {
-      logger.warn(`Failed to parse resume for candidate ${candidateId}:`, err);
-    }
-  }
-
-  // Merge all candidate skills (deduplicated, lowercased for comparison)
-  const allCandidateSkills = [
-    ...new Set([
-      ...candidateSkills.map((s) => s.toLowerCase()),
-      ...resumeSkills.map((s) => s.toLowerCase()),
-    ]),
-  ];
-
   // Parse job required skills (handle both string and already-parsed array)
   const jobSkills: string[] = job.skills
     ? (typeof job.skills === "string" ? JSON.parse(job.skills) : job.skills)
     : [];
-  const jobSkillsLower = jobSkills.map((s) => s.toLowerCase());
 
-  // Calculate skills score
-  const { skillsScore, matchedSkills, missingSkills } = calculateSkillsScore(
-    allCandidateSkills,
-    jobSkillsLower,
-    jobSkills,
+  // ---- Primary path: AI scoring from the resume BLOB -----------------------
+  // The resume lives in MySQL (resume_files.content LONGBLOB), NOT on disk. Read
+  // it via the application's resume_file_id, extract text with the real parser,
+  // and score with whatever LLM is configured (heuristic fallback baked in).
+  const resumeText = await loadResumeText((application as any).resume_file_id);
+
+  // requireAI: when an AI provider is configured, a provider failure (e.g.
+  // rate-limit) must NOT silently degrade to a misleading keyword score — it
+  // throws so the async runner marks the score 'failed' and the UI offers retry.
+  const ai = await parseAndScore(
+    resumeText,
+    {
+      title: job.title,
+      description: job.description ?? undefined,
+      requirements: job.requirements ?? undefined,
+      skills: jobSkills,
+    },
+    { requireAI: true },
   );
 
-  // Calculate experience score
-  const experienceScore = calculateExperienceScore(
-    candidate.experience_years,
-    job.experience_min,
-    job.experience_max,
-  );
+  let overallScore = ai.overallScore;
+  let skillsScore = ai.skillsScore;
+  let experienceScore = ai.experienceScore;
+  let matchedSkills = ai.matchedSkills;
+  let missingSkills = ai.missingSkills;
 
-  // Overall score: 60% skills + 40% experience
-  const overallScore = Math.round(skillsScore * 0.6 + experienceScore * 0.4);
+  // If the resume had no readable text at all, fall back to the candidate's
+  // profile skills + stated experience so we still produce a sensible number.
+  if (!resumeText || resumeText.trim().length < 40) {
+    const candidateSkills: string[] = candidate.skills
+      ? (typeof candidate.skills === "string" ? JSON.parse(candidate.skills) : candidate.skills)
+      : [];
+    if (candidateSkills.length && jobSkills.length) {
+      const jobSkillsLower = jobSkills.map((s) => s.toLowerCase());
+      const s = calculateSkillsScore(
+        candidateSkills.map((x) => x.toLowerCase()),
+        jobSkillsLower,
+        jobSkills,
+      );
+      skillsScore = s.skillsScore;
+      matchedSkills = s.matchedSkills;
+      missingSkills = s.missingSkills;
+    }
+    experienceScore = calculateExperienceScore(
+      candidate.experience_years,
+      job.experience_min,
+      job.experience_max,
+    );
+    overallScore = Math.round(skillsScore * 0.6 + experienceScore * 0.4);
+  }
 
-  // Determine recommendation
   const recommendation = getRecommendation(overallScore);
 
   // Upsert score record (delete existing if any, then create new)
@@ -271,6 +334,21 @@ export async function scoreCandidate(
 
   const scoreId = existingScore ? existingScore.id : uuidv4();
 
+  const aiSummary = ai.summary || null;
+  // Full structured reasoning for the report ("why" behind the score).
+  const report = {
+    usedAI: ai.usedAI,
+    summary: ai.summary || null,
+    skills_reasoning: ai.skillsReasoning || null,
+    experience_reasoning: ai.experienceReasoning || null,
+    strengths: ai.strengths || [],
+    concerns: ai.concerns || [],
+    matched_skills: matchedSkills,
+    missing_skills: missingSkills,
+    experience_years: ai.extracted?.total_experience_years ?? null,
+  };
+  const reportJson = JSON.stringify(report);
+
   if (existingScore) {
     await db.update<CandidateScore>("candidate_scores", existingScore.id, {
       overall_score: overallScore,
@@ -279,6 +357,9 @@ export async function scoreCandidate(
       matched_skills: JSON.stringify(matchedSkills),
       missing_skills: JSON.stringify(missingSkills),
       recommendation,
+      ai_summary: aiSummary,
+      report_json: reportJson,
+      status: "completed",
       scored_at: new Date(),
     } as any);
   } else {
@@ -294,6 +375,9 @@ export async function scoreCandidate(
       matched_skills: JSON.stringify(matchedSkills),
       missing_skills: JSON.stringify(missingSkills),
       recommendation,
+      ai_summary: aiSummary,
+      report_json: reportJson,
+      status: "completed",
       scored_at: new Date(),
     } as any);
   }
@@ -306,6 +390,8 @@ export async function scoreCandidate(
     matchedSkills,
     missingSkills,
     recommendation,
+    summary: aiSummary,
+    usedAI: ai.usedAI,
   };
 }
 

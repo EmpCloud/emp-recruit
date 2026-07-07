@@ -5,6 +5,7 @@
 // ============================================================================
 
 import { logger } from "../../utils/logger";
+import { callLLM, isAiConfigured } from "../ai/ai-provider.service";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -27,6 +28,7 @@ export interface GeneratedJD {
   requirements: string[];
   nice_to_have: string[];
   benefits: string[];
+  skills: string[]; // suggested skills for the posting (AI-generated or from input)
   full_description: string;
 }
 
@@ -78,6 +80,24 @@ const SENIORITY_CONTEXT: Record<string, { years: string; prefix: string; focus: 
 };
 
 // Role-specific responsibility templates
+// Role-based default skill suggestions for the template (no-AI) path.
+const ROLE_SKILLS: Record<string, string[]> = {
+  engineer: ["JavaScript", "TypeScript", "REST APIs", "Git", "SQL", "Docker", "CI/CD", "Testing", "Problem Solving", "System Design"],
+  designer: ["Figma", "UI Design", "UX Research", "Prototyping", "Design Systems", "Wireframing", "Accessibility", "Visual Design"],
+  product: ["Product Strategy", "Roadmapping", "Stakeholder Management", "Agile", "Analytics", "User Research", "Prioritization", "A/B Testing"],
+  marketing: ["SEO", "Content Marketing", "Google Analytics", "Campaign Management", "Social Media", "Copywriting", "Email Marketing", "Marketing Automation"],
+  sales: ["CRM", "Negotiation", "Lead Generation", "Account Management", "Pipeline Management", "Communication", "Cold Outreach", "Closing"],
+  hr: ["Recruiting", "Onboarding", "Employee Relations", "HRIS", "Performance Management", "Compensation", "Compliance", "Interviewing"],
+  finance: ["Financial Modeling", "Excel", "Accounting", "Budgeting", "Forecasting", "Reporting", "Compliance", "Analysis"],
+  operations: ["Process Improvement", "Supply Chain", "Logistics", "Project Management", "Vendor Management", "Data Analysis", "Automation"],
+  data: ["Python", "SQL", "Machine Learning", "Data Visualization", "Statistics", "Pandas", "ETL", "Experimentation"],
+  default: ["Communication", "Teamwork", "Problem Solving", "Time Management", "Adaptability", "Attention to Detail", "Collaboration"],
+};
+
+function suggestSkillsForRole(_title: string, roleCategory: string): string[] {
+  return ROLE_SKILLS[roleCategory] || ROLE_SKILLS.default;
+}
+
 const ROLE_RESPONSIBILITIES: Record<string, string[]> = {
   engineer: [
     "Design, develop, and maintain scalable software solutions",
@@ -295,6 +315,8 @@ function generateFromTemplate(input: JDInput): GeneratedJD {
     requirements,
     nice_to_have: niceToHave,
     benefits,
+    // Template path: suggest role-based skills merged with the provided ones.
+    skills: dedupeSkills([...(input.skills || []), ...suggestSkillsForRole(input.title, roleCategory)]),
     full_description,
   };
 }
@@ -303,12 +325,14 @@ function generateFromTemplate(input: JDInput): GeneratedJD {
 // OpenAI Generator (optional)
 // ---------------------------------------------------------------------------
 
-async function generateWithOpenAI(input: JDInput): Promise<GeneratedJD | null> {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) return null;
+async function generateWithLLM(input: JDInput): Promise<GeneratedJD | null> {
+  // Use whatever LLM the operator configured (OpenAI / Anthropic / Gemini /
+  // OpenAI-compatible) — not OpenAI-only. Returns null (→ template fallback) if
+  // no provider is configured or the call fails.
+  if (!isAiConfigured()) return null;
 
   try {
-    const prompt = `Generate a professional job description for the following position:
+    const prompt = `You are an expert HR copywriter. Generate a professional job description for:
 
 Title: ${input.title}
 Department: ${input.department || "Not specified"}
@@ -316,69 +340,102 @@ Seniority: ${input.seniority}
 Key Skills: ${input.skills.join(", ")}
 Location: ${input.location || "Not specified"}
 Employment Type: ${input.employment_type || "Full-time"}
+Salary Range: ${input.salary_range || "Not specified"}
+Company: ${input.company_description || "Not specified"}
 
-Return a JSON object with these fields:
+Tailor the content to the salary range and company context when provided.
+Return a JSON object with these fields (and nothing else):
 - overview (string): 2-3 sentence overview of the role
 - responsibilities (string[]): 6-8 key responsibilities
 - requirements (string[]): 5-7 must-have requirements
 - nice_to_have (string[]): 3-5 nice-to-have qualifications
-- benefits (string[]): 5-7 benefits
+- benefits (string[]): 5-7 benefits (reflect the company/location where relevant)
+- skills (string[]): 8-15 concrete technical/professional skills for this role. INCLUDE the provided key skills and ADD the other important skills a strong candidate would need (tools, languages, frameworks, methodologies).
 
 Return ONLY valid JSON, no markdown wrapping.`;
 
-    const response = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        messages: [
-          { role: "system", content: "You are an expert HR copywriter who creates compelling job descriptions." },
-          { role: "user", content: prompt },
-        ],
-        temperature: 0.7,
-        max_tokens: 2000,
-      }),
+    // Short budget + few retries: JD generation is interactive, so if the model
+    // is slow/overloaded we fail fast and fall back to the instant template
+    // rather than making the user wait minutes.
+    const content = await callLLM(prompt, {
+      maxTokens: 2500,
+      temperature: 0.7,
+      json: true,
+      timeoutMs: 30_000,
+      maxAttempts: 2,
     });
-
-    if (!response.ok) {
-      logger.warn(`OpenAI API error: ${response.status} ${response.statusText}`);
-      return null;
-    }
-
-    const data = await response.json() as any;
-    const content = data.choices?.[0]?.message?.content;
     if (!content) return null;
 
-    // Try to parse JSON from the response (handle potential markdown code blocks)
-    let jsonStr = content;
-    const jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/);
-    if (jsonMatch) jsonStr = jsonMatch[1];
+    // Robustly extract the JSON object (reasoning models add prose/fences).
+    const parsed = extractJsonObject(content);
+    if (!parsed) return null;
 
-    const parsed = JSON.parse(jsonStr.trim());
+    const arr = (v: any): string[] => (Array.isArray(v) ? v.map((x) => String(x).trim()).filter(Boolean) : []);
+    const responsibilities = arr(parsed.responsibilities);
+    const requirements = arr(parsed.requirements);
+    const nice_to_have = arr(parsed.nice_to_have);
+    const benefits = arr(parsed.benefits);
+    // Merge AI-suggested skills with the user's input (dedup); cap so the Skills
+    // field stays usable (keep the input skills + top suggestions, max ~20).
+    const skills = dedupeSkills([...(input.skills || []), ...arr(parsed.skills)]).slice(0, 20);
 
     const full_description = [
       `## About the Role\n\n${parsed.overview}`,
-      `## Responsibilities\n\n${parsed.responsibilities.map((r: string) => `- ${r}`).join("\n")}`,
-      `## Requirements\n\n${parsed.requirements.map((r: string) => `- ${r}`).join("\n")}`,
-      `## Nice to Have\n\n${parsed.nice_to_have.map((r: string) => `- ${r}`).join("\n")}`,
-      `## Benefits\n\n${parsed.benefits.map((b: string) => `- ${b}`).join("\n")}`,
+      `## Responsibilities\n\n${responsibilities.map((r) => `- ${r}`).join("\n")}`,
+      `## Requirements\n\n${requirements.map((r) => `- ${r}`).join("\n")}`,
+      `## Nice to Have\n\n${nice_to_have.map((r) => `- ${r}`).join("\n")}`,
+      `## Benefits\n\n${benefits.map((b) => `- ${b}`).join("\n")}`,
     ].join("\n\n");
 
     return {
-      overview: parsed.overview,
-      responsibilities: parsed.responsibilities,
-      requirements: parsed.requirements,
-      nice_to_have: parsed.nice_to_have,
-      benefits: parsed.benefits,
+      overview: String(parsed.overview || ""),
+      responsibilities,
+      requirements,
+      nice_to_have,
+      benefits,
+      skills,
       full_description,
     };
   } catch (err) {
-    logger.warn("OpenAI generation failed, falling back to template:", err);
+    logger.warn("LLM job-description generation failed, falling back to template:", err);
     return null;
   }
+}
+
+// Case-insensitive dedupe while preserving the first-seen casing/order.
+function dedupeSkills(skills: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const s of skills) {
+    const k = s.toLowerCase();
+    if (s && !seen.has(k)) { seen.add(k); out.push(s); }
+  }
+  return out;
+}
+
+// Extract a JSON object from an LLM response (handles fences, prose, and
+// balanced-brace scanning for reasoning models).
+function extractJsonObject(text: string): any | null {
+  const candidates: string[] = [];
+  const fenceRe = /```(?:json)?\s*([\s\S]*?)```/gi;
+  let m: RegExpExecArray | null;
+  while ((m = fenceRe.exec(text)) !== null) candidates.push(m[1]);
+  let depth = 0, start = -1;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === "{") { if (depth === 0) start = i; depth++; }
+    else if (ch === "}") { depth--; if (depth === 0 && start !== -1) { candidates.push(text.slice(start, i + 1)); start = -1; } }
+  }
+  const s = text.indexOf("{"), e = text.lastIndexOf("}");
+  if (s !== -1 && e > s) candidates.push(text.slice(s, e + 1));
+  let best: any = null;
+  for (const c of candidates) {
+    try {
+      const p = JSON.parse(c);
+      if (p && typeof p === "object") { if ("overview" in p || "responsibilities" in p) return p; best = best ?? p; }
+    } catch { /* next */ }
+  }
+  return best;
 }
 
 // ---------------------------------------------------------------------------
@@ -391,7 +448,7 @@ Return ONLY valid JSON, no markdown wrapping.`;
  */
 export async function generateJobDescription(input: JDInput): Promise<GeneratedJD & { source: "ai" | "template" }> {
   // Try OpenAI first if API key is available
-  const aiResult = await generateWithOpenAI(input);
+  const aiResult = await generateWithLLM(input);
   if (aiResult) {
     logger.info(`Job description generated via OpenAI for: ${input.title}`);
     return { ...aiResult, source: "ai" };

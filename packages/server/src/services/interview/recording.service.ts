@@ -9,6 +9,8 @@ import path from "path";
 import { getDB } from "../../db/adapters";
 import { NotFoundError } from "../../utils/errors";
 import { logger } from "../../utils/logger";
+import { transcribeFile } from "../ai/speech-to-text.service";
+import { probeDurationSeconds } from "../media/media-probe.util";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -65,13 +67,17 @@ export async function uploadRecording(
   const now = new Date();
   const recordingId = uuidv4();
 
+  // Extract the real media duration from the uploaded file (ffprobe). Null only
+  // if probing genuinely fails — never a fabricated value.
+  const durationSeconds = await probeDurationSeconds(file.path);
+
   const recording = await db.create<InterviewRecording>("interview_recordings", {
     id: recordingId,
     organization_id: orgId,
     interview_id: interviewId,
     file_path: file.path.replace(/\\/g, "/"),
     file_size: file.size,
-    duration_seconds: null, // Would be extracted from the file in production
+    duration_seconds: durationSeconds,
     mime_type: file.mimetype,
     uploaded_by: uploadedBy,
     uploaded_at: now,
@@ -182,28 +188,41 @@ export async function generateTranscript(
     throw new NotFoundError("Recording", recordingId);
   }
 
-  // TODO: In production, use OpenAI Whisper API or Google Speech-to-Text
-  // to transcribe the recording file at recording.file_path.
-  // For MVP, we generate a realistic placeholder transcript with timestamps.
-  const placeholderTranscript = generatePlaceholderTranscript();
-
   const now = new Date();
   const transcriptId = uuidv4();
+
+  // Transcribe the ACTUAL recording via Whisper. If STT isn't configured, we do
+  // NOT fabricate a transcript — we persist a failed row with an honest reason
+  // so the UI tells the recruiter to configure STT or paste a transcript.
+  let content: string;
+  let status: "completed" | "failed";
+  let errorNote: string | null = null;
+  try {
+    const absPath = path.isAbsolute(recording.file_path)
+      ? recording.file_path
+      : path.resolve(recording.file_path);
+    content = await transcribeFile(absPath, recording.mime_type ?? undefined);
+    status = "completed";
+    logger.info(`Transcript generated (real STT) for recording ${recordingId}`);
+  } catch (err: any) {
+    content = "";
+    status = "failed";
+    errorNote = err?.message || "Transcription failed";
+    logger.warn(`Transcription failed for recording ${recordingId}: ${errorNote}`);
+  }
 
   const transcript = await db.create<InterviewTranscript>("interview_transcripts", {
     id: transcriptId,
     organization_id: orgId,
     interview_id: interviewId,
     recording_id: recordingId,
-    content: placeholderTranscript,
-    summary: null,
-    status: "completed",
+    content,
+    summary: errorNote, // surface the reason on failure; null on success until AI summary runs
+    status,
     generated_at: now,
     created_at: now,
     updated_at: now,
   });
-
-  logger.info(`Transcript generated for recording ${recordingId} (interview ${interviewId})`);
 
   return transcript;
 }
@@ -251,40 +270,4 @@ export async function updateTranscriptSummary(
   });
 
   return updated;
-}
-
-// ---------------------------------------------------------------------------
-// Helper: Generate a realistic placeholder transcript
-// ---------------------------------------------------------------------------
-
-function generatePlaceholderTranscript(): string {
-  return `[00:00:00] Interviewer: Good morning, thank you for joining us today. How are you?
-
-[00:00:05] Candidate: Good morning! I'm doing well, thank you for having me. I've been looking forward to this conversation.
-
-[00:00:15] Interviewer: Great to hear. Let's start with a brief introduction. Could you tell us about your background and what brings you to this role?
-
-[00:00:25] Candidate: Of course. I have about five years of experience in software development, primarily working with full-stack technologies. In my current role, I lead a team of four developers and we build internal tools that serve over 2,000 employees across the organization.
-
-[00:01:10] Interviewer: That sounds impressive. Can you walk us through a challenging project you worked on recently?
-
-[00:01:18] Candidate: Sure. Last quarter, we migrated our legacy monolith to a microservices architecture. The biggest challenge was maintaining zero downtime during the transition while handling over 10,000 daily active users. We used a strangler fig pattern and feature flags to gradually shift traffic.
-
-[00:02:45] Interviewer: How did you handle data consistency across services during the migration?
-
-[00:02:52] Candidate: We implemented an event-driven architecture using message queues. For critical operations, we used the saga pattern to maintain consistency. We also set up comprehensive monitoring and alerting so we could catch any discrepancies early.
-
-[00:03:30] Interviewer: Excellent approach. Now, let's discuss your experience with team leadership. How do you handle conflicts within your team?
-
-[00:03:40] Candidate: I believe in addressing conflicts early and directly. I schedule one-on-one meetings to understand each person's perspective, then facilitate a group discussion focused on finding common ground. I've found that most conflicts stem from miscommunication rather than fundamental disagreements.
-
-[00:04:20] Interviewer: That's a mature approach. Do you have any questions for us about the role or the company?
-
-[00:04:28] Candidate: Yes, I'd love to know more about the team structure and the tech stack you're currently using. Also, what does the onboarding process look like for new engineers?
-
-[00:04:45] Interviewer: Great questions. Let me walk you through that...
-
-[00:05:30] Interviewer: Thank you for your time today. We'll be in touch with next steps within the week.
-
-[00:05:35] Candidate: Thank you so much! I really enjoyed our conversation and I'm excited about the opportunity.`;
 }

@@ -1,15 +1,17 @@
 import { useParams, useNavigate } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
   Brain,
   Target,
   BarChart,
   Loader2,
+  RefreshCw,
 } from "lucide-react";
-import { apiGet } from "@/api/client";
+import { apiGet, apiPost } from "@/api/client";
+import toast from "react-hot-toast";
 import type { CandidateScore } from "@emp-recruit/shared";
-import { cn } from "@/lib/utils";
+import { cn, aiErrorMessage } from "@/lib/utils";
 
 const RECOMMENDATION_CONFIG: Record<
   string,
@@ -136,19 +138,77 @@ function ProgressBar({
 export function ScoreReportPage() {
   const { appId } = useParams<{ appId: string }>();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
   const { data: scoreData, isLoading } = useQuery({
     queryKey: ["score-report", appId],
-    queryFn: () => apiGet<CandidateScore>(`/scoring/applications/${appId}`),
+    queryFn: () => apiGet<CandidateScore & { status?: string; report_json?: string }>(`/scoring/applications/${appId}`),
     enabled: Boolean(appId),
+    // Poll while the AI is still scoring in the background.
+    refetchInterval: (q) => {
+      const s: any = (q.state.data as any)?.data;
+      return s?.status === "processing" ? 4000 : false;
+    },
   });
 
-  const score = scoreData?.data;
+  // Re-evaluate: kicks off a fresh AI scoring run in the background, then the
+  // query above polls until it completes.
+  const reevaluate = useMutation({
+    mutationFn: () => apiPost(`/scoring/applications/${appId}/score`),
+    onSuccess: () => {
+      toast.success("Re-evaluating with AI… this can take up to a minute.");
+      // Optimistically flip to processing so the spinner shows + polling starts.
+      queryClient.setQueryData(["score-report", appId], (old: any) =>
+        old?.data ? { ...old, data: { ...old.data, status: "processing" } } : old,
+      );
+      queryClient.invalidateQueries({ queryKey: ["score-report", appId] });
+    },
+    onError: (err: any) => toast.error(aiErrorMessage(err, "Couldn't start the evaluation. Please try again.")),
+  });
+
+  const score = scoreData?.data as any;
 
   if (isLoading) {
     return (
       <div className="flex justify-center py-12">
         <Loader2 className="h-8 w-8 animate-spin text-purple-600" />
+      </div>
+    );
+  }
+
+  // AI scoring runs in the background (~30-90s with a reasoning model).
+  if (score?.status === "processing") {
+    return (
+      <div className="mx-auto max-w-3xl space-y-6">
+        <button onClick={() => navigate(-1)} className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700">
+          <ArrowLeft className="h-4 w-4" /> Back
+        </button>
+        <div className="rounded-xl border border-gray-200 bg-white py-16 text-center">
+          <Loader2 className="mx-auto mb-4 h-10 w-10 animate-spin text-purple-600" />
+          <h2 className="text-lg font-semibold text-gray-900">AI is evaluating this candidate…</h2>
+          <p className="mt-1 text-sm text-gray-500">Reading the resume against the job. This can take up to a minute.</p>
+        </div>
+      </div>
+    );
+  }
+  if (score?.status === "failed") {
+    return (
+      <div className="mx-auto max-w-3xl space-y-6">
+        <button onClick={() => navigate(-1)} className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700">
+          <ArrowLeft className="h-4 w-4" /> Back
+        </button>
+        <div className="rounded-xl border border-red-200 bg-red-50 py-12 text-center">
+          <p className="font-medium text-red-800">AI scoring failed for this candidate.</p>
+          <p className="mt-1 text-sm text-red-600">The AI provider may have been rate-limited. Try again.</p>
+          <button
+            onClick={() => reevaluate.mutate()}
+            disabled={reevaluate.isPending}
+            className="mt-4 inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
+          >
+            {reevaluate.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+            Re-evaluate
+          </button>
+        </div>
       </div>
     );
   }
@@ -166,11 +226,19 @@ export function ScoreReportPage() {
         <div className="py-12 text-center">
           <Brain className="mx-auto h-12 w-12 text-gray-300" />
           <p className="mt-3 text-gray-500">
-            No score report found for this application.
+            No score report yet for this application.
           </p>
           <p className="text-sm text-gray-400 mt-1">
-            Score the candidate first from the job pipeline view.
+            Run an AI evaluation to score this candidate against the job.
           </p>
+          <button
+            onClick={() => reevaluate.mutate()}
+            disabled={reevaluate.isPending}
+            className="mt-4 inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
+          >
+            {reevaluate.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Brain className="h-4 w-4" />}
+            Evaluate with AI
+          </button>
         </div>
       </div>
     );
@@ -192,6 +260,17 @@ export function ScoreReportPage() {
         : JSON.parse(score.missing_skills)
       : [];
   } catch { missingSkills = []; }
+
+  // Full AI reasoning ("why" behind the score).
+  let report: any = {};
+  try {
+    report = score.report_json
+      ? (typeof score.report_json === "string" ? JSON.parse(score.report_json) : score.report_json)
+      : {};
+  } catch { report = {}; }
+  const strengths: string[] = Array.isArray(report.strengths) ? report.strengths : [];
+  const concerns: string[] = Array.isArray(report.concerns) ? report.concerns : [];
+  const usedAI: boolean = report.usedAI === true;
   const rec = RECOMMENDATION_CONFIG[score.recommendation];
 
   return (
@@ -205,11 +284,26 @@ export function ScoreReportPage() {
         Back
       </button>
 
-      {/* Page title */}
-      <div className="flex items-center gap-3">
-        <Brain className="h-7 w-7 text-purple-600" />
-        <h1 className="text-2xl font-bold text-gray-900">AI Score Report</h1>
+      {/* Page title + re-evaluate */}
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <Brain className="h-7 w-7 text-purple-600" />
+          <h1 className="text-2xl font-bold text-gray-900">AI Score Report</h1>
+        </div>
+        <button
+          onClick={() => reevaluate.mutate()}
+          disabled={reevaluate.isPending}
+          className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50"
+        >
+          {reevaluate.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+          Re-evaluate
+        </button>
       </div>
+      {score?.scored_at && (
+        <p className="-mt-3 text-xs text-gray-400">
+          Last evaluated {new Date(score.scored_at).toLocaleString()}
+        </p>
+      )}
 
       {/* Overall Score */}
       <div className="rounded-xl border border-gray-200 bg-white p-8 text-center">
@@ -233,6 +327,67 @@ export function ScoreReportPage() {
           </div>
         )}
       </div>
+
+      {/* Honest banner when this is a keyword (non-AI) score. */}
+      {!usedAI && (score as any).ai_summary && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          This is a <strong>keyword-match</strong> score, not a full AI evaluation. Re-run <strong>AI Score</strong> from the pipeline
+          to get an AI assessment with reasoning.
+        </div>
+      )}
+
+      {/* AI assessment — the reasoned report: why this score. */}
+      {((score as any).ai_summary || report.summary || strengths.length || concerns.length) && (
+        <div className="space-y-4 rounded-xl border border-purple-100 bg-purple-50/40 p-6">
+          <h2 className="flex items-center gap-2 text-sm font-semibold text-purple-800">
+            <Brain className="h-4 w-4" /> {usedAI ? "AI assessment" : "Assessment"}
+          </h2>
+
+          {(report.summary || (score as any).ai_summary) && (
+            <p className="text-sm leading-relaxed text-gray-700">{report.summary || (score as any).ai_summary}</p>
+          )}
+
+          {/* Per-dimension reasoning — WHY each sub-score. */}
+          {(report.skills_reasoning || report.experience_reasoning) && (
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {report.skills_reasoning && (
+                <div className="rounded-lg border border-gray-100 bg-white p-3">
+                  <div className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-gray-700"><Target className="h-3.5 w-3.5 text-purple-500" /> Why the skills score</div>
+                  <p className="text-sm text-gray-600">{report.skills_reasoning}</p>
+                </div>
+              )}
+              {report.experience_reasoning && (
+                <div className="rounded-lg border border-gray-100 bg-white p-3">
+                  <div className="mb-1 flex items-center gap-1.5 text-xs font-semibold text-gray-700"><BarChart className="h-3.5 w-3.5 text-blue-500" /> Why the experience score</div>
+                  <p className="text-sm text-gray-600">{report.experience_reasoning}</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Strengths + concerns — the "why high / why low". */}
+          {(strengths.length > 0 || concerns.length > 0) && (
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {strengths.length > 0 && (
+                <div className="rounded-lg border border-emerald-100 bg-emerald-50/60 p-3">
+                  <div className="mb-1.5 text-xs font-semibold text-emerald-700">Strengths</div>
+                  <ul className="list-disc space-y-1 pl-4 text-sm text-gray-700">
+                    {strengths.map((s, i) => <li key={i}>{s}</li>)}
+                  </ul>
+                </div>
+              )}
+              {concerns.length > 0 && (
+                <div className="rounded-lg border border-red-100 bg-red-50/60 p-3">
+                  <div className="mb-1.5 text-xs font-semibold text-red-700">Concerns / why the score is lower</div>
+                  <ul className="list-disc space-y-1 pl-4 text-sm text-gray-700">
+                    {concerns.map((c, i) => <li key={i}>{c}</li>)}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Score Breakdown */}
       <div className="rounded-xl border border-gray-200 bg-white p-6 space-y-6">

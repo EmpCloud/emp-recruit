@@ -12,6 +12,18 @@ import { NotFoundError, ValidationError } from "../../utils/errors";
 import { logger } from "../../utils/logger";
 import { toMysqlDateTime } from "../../utils/date";
 import * as emailService from "../email/email.service";
+import { htmlToPdf } from "../pdf/html-to-pdf.service";
+
+// Wrap rendered template HTML in a minimal print-styled document so the PDF has
+// sensible typography even if the template is a bare fragment.
+function wrapForPrint(inner: string): string {
+  if (/<html[\s>]/i.test(inner)) return inner; // already a full document
+  return `<!doctype html><html><head><meta charset="utf-8"><style>
+    body{font-family:Georgia,'Times New Roman',serif;font-size:12pt;line-height:1.6;color:#111;}
+    h1,h2,h3{font-family:Arial,Helvetica,sans-serif;}
+    p{margin:0 0 10pt;}
+  </style></head><body>${inner}</body></html>`;
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -239,17 +251,19 @@ export async function generateOfferLetter(
     }),
   };
 
-  // Render Handlebars template
+  // Render Handlebars template to HTML, then to a REAL PDF via headless Chromium
+  // (previously this saved the HTML as a ".html" file and called it an offer
+  // letter — users expect a downloadable PDF).
   const compiled = Handlebars.compile(template.content_template);
   const renderedContent = compiled(variables);
+  const pdfBuffer = await htmlToPdf(wrapForPrint(renderedContent));
 
-  // Save HTML file to uploads
   const uploadDir = path.join(process.cwd(), "uploads", "offer-letters", String(orgId));
   await fs.mkdir(uploadDir, { recursive: true });
 
-  const fileName = `offer-letter-${offerId}-${Date.now()}.html`;
+  const fileName = `offer-letter-${offerId}-${Date.now()}.pdf`;
   const filePath = path.join(uploadDir, fileName);
-  await fs.writeFile(filePath, renderedContent, "utf-8");
+  await fs.writeFile(filePath, new Uint8Array(pdfBuffer));
 
   const relativePath = `uploads/offer-letters/${orgId}/${fileName}`;
 

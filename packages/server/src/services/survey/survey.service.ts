@@ -8,6 +8,7 @@ import crypto from "crypto";
 import { getDB } from "../../db/adapters";
 import { NotFoundError, ValidationError } from "../../utils/errors";
 import { logger } from "../../utils/logger";
+import { sendEmail } from "../email/email.service";
 import type {
   CandidateSurvey,
   CandidateSurveyResponse,
@@ -101,9 +102,24 @@ export async function sendSurvey(
 
   const questions = SURVEY_QUESTIONS[data.survey_type] || SURVEY_QUESTIONS.post_interview;
 
-  logger.info(
-    `Survey sent: ${id} (${data.survey_type}) for candidate ${data.candidate_id}, token: ${token.slice(0, 8)}...`,
-  );
+  // Actually EMAIL the candidate the survey link (previously only logged "sent").
+  if (candidate.email) {
+    const appUrl = process.env.PUBLIC_APP_URL || "http://localhost:5179";
+    const link = `${appUrl}/survey/${token}`;
+    const name = [candidate.first_name, candidate.last_name].filter(Boolean).join(" ") || "there";
+    const esc = (s: string) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const html =
+      `<p>Hi ${esc(name)},</p>` +
+      `<p>We'd love your quick feedback on your experience. It only takes a minute.</p>` +
+      `<p><a href="${link}" style="background:#4F46E5;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;">Share feedback</a></p>` +
+      `<p>Or paste this link into your browser:<br>${link}</p>`;
+    sendEmail(candidate.email, "We'd love your feedback", html).catch((err) =>
+      logger.warn(`Survey email to ${candidate.email} failed: ${err.message}`),
+    );
+    logger.info(`Survey emailed to ${candidate.email} (${id})`);
+  } else {
+    logger.warn(`Survey ${id} created but candidate has no email — share the link manually.`);
+  }
 
   return { ...record, questions };
 }
