@@ -54,4 +54,7 @@ export const config = {
   cors: {
     origin: process.env.CORS_ORIGIN || "http://localhost:5179",
   },
+
+  // Public client URL — used to build absolute job links in the crawlable feed.
+  clientUrl: process.env.CLIENT_URL || "http://localhost:5179",
 } as const;
