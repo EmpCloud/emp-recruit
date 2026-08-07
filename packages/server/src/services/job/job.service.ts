@@ -245,58 +245,53 @@ export async function updateJob(
 
 export async function listJobs(
   orgId: number,
-  params: { page?: number; perPage?: number; status?: string; search?: string; sort?: string; order?: "asc" | "desc" },
+  params: {
+    page?: number;
+    perPage?: number;
+    status?: string;
+    search?: string;
+    department?: string;
+    location?: string;
+    employment_type?: string;
+    sort?: string;
+    order?: "asc" | "desc";
+  },
 ): Promise<{ data: JobPosting[]; total: number; page: number; perPage: number }> {
   const db = getDB();
   const page = params.page ?? 1;
   const perPage = params.perPage ?? 20;
+  const offset = (page - 1) * perPage;
+  const where = ["organization_id = ?"];
+  const args: any[] = [orgId];
 
-  const filters: Record<string, any> = { organization_id: orgId };
-  if (params.status) filters.status = params.status;
+  if (params.status) { where.push("status = ?"); args.push(params.status); }
+  if (params.department) { where.push("department = ?"); args.push(params.department); }
+  if (params.location) { where.push("location = ?"); args.push(params.location); }
+  if (params.employment_type) { where.push("employment_type = ?"); args.push(params.employment_type); }
+  if (params.search?.trim()) {
+    const search = `%${params.search.trim()}%`;
+    where.push("(title LIKE ? OR department LIKE ? OR location LIKE ?)");
+    args.push(search, search, search);
+  }
 
-  // Allowlist the sort column — never interpolate a request string into SQL.
   const { column, direction } = safeOrderBy(
     params.sort,
     params.order,
     ["created_at", "updated_at", "title", "department", "location", "status"],
     "created_at",
   );
-
-  const result = await db.findMany<JobPosting>("job_postings", {
-    page,
-    limit: perPage,
-    filters,
-    sort: { field: column, order: direction.toLowerCase() as "asc" | "desc" },
-  });
-
-  // If search is provided, we filter in raw query for LIKE
-  if (params.search) {
-    const search = `%${params.search}%`;
-    const offset = (page - 1) * perPage;
-    let statusFilter = "";
-    const queryParams: any[] = [orgId, search, search, search];
-    if (params.status) {
-      statusFilter = " AND status = ?";
-      queryParams.push(params.status);
-    }
-    // The count must apply the SAME status filter as the data query, otherwise
-    // total is overstated and the UI shows phantom empty pages (audit M21).
-    const countRows = await db.raw<any[][]>(
-      `SELECT COUNT(*) as total FROM job_postings WHERE organization_id = ? AND (title LIKE ? OR department LIKE ? OR location LIKE ?)${statusFilter}`,
-      queryParams,
-    );
-    const total = Number(countRows[0]?.[0]?.total ?? 0);
-    const dataRows = await db.raw<any[][]>(
-      `SELECT * FROM job_postings WHERE organization_id = ? AND (title LIKE ? OR department LIKE ? OR location LIKE ?)${statusFilter} ORDER BY \`${column}\` ${direction} LIMIT ? OFFSET ?`,
-      [...queryParams, perPage, offset],
-    );
-
-    return { data: dataRows[0] as JobPosting[], total, page, perPage };
-  }
-
-  return { data: result.data, total: result.total, page, perPage };
+  const whereSql = where.join(" AND ");
+  const countRows = await db.raw<any[][]>(
+    `SELECT COUNT(*) AS total FROM job_postings WHERE ${whereSql}`,
+    args,
+  );
+  const total = Number(countRows[0]?.[0]?.total ?? 0);
+  const dataRows = await db.raw<any[][]>(
+    `SELECT * FROM job_postings WHERE ${whereSql} ORDER BY \`${column}\` ${direction} LIMIT ? OFFSET ?`,
+    [...args, perPage, offset],
+  );
+  return { data: dataRows[0] as JobPosting[], total, page, perPage };
 }
-
 export async function getJob(orgId: number, id: string): Promise<JobPosting> {
   const db = getDB();
   const job = await db.findOne<JobPosting>("job_postings", { id, organization_id: orgId });

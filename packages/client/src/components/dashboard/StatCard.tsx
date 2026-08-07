@@ -138,24 +138,24 @@ export function StatCard({
       style={{ borderLeftColor: "var(--accent)" }}
     >
       <Link to={to} className="block p-5 focus:outline-none">
-        <div className="flex items-stretch justify-between gap-4">
-          <div className="flex min-w-0 items-start gap-3.5">
+        <div className="relative flex items-start">
+          <div className="flex min-w-0 flex-1 items-start gap-3.5 pr-5">
             <span className={cn("inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-xl", tone.chip)}>
               <Icon className="h-6 w-6" aria-hidden="true" />
             </span>
             <div className="min-w-0 pt-0.5">
-              <span className="block truncate text-sm font-medium text-gray-500">{label}</span>
+              <span className="block whitespace-nowrap text-sm font-medium text-gray-500">{label}</span>
               {isLoading ? (
                 <Skeleton className="mt-2 h-8 w-16" />
               ) : (
-                <p className="mt-2 text-3xl font-semibold leading-none tracking-tight text-gray-900">
+                <p className="mt-2 text-3xl font-bold leading-none tracking-tight" style={{ color: "var(--accent)" }}>
                   {formatValue(value, locale)}
                 </p>
               )}
             </div>
           </div>
 
-          <div className="flex shrink-0 flex-col items-end justify-between gap-5">
+          <div className="absolute inset-y-0 right-0 flex flex-col items-end justify-between">
             <ArrowUpRight
               className="h-4 w-4 text-gray-400 transition-colors group-hover:text-brand-500"
               aria-hidden="true"

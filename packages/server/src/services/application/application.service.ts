@@ -121,6 +121,34 @@ export async function moveStage(
   return updated;
 }
 
+export async function getApplicationStats(orgId: number): Promise<{
+  total: number;
+  newThisWeek: number;
+  inReview: number;
+  interviewing: number;
+  rejected: number;
+}> {
+  const db = getDB();
+  const rows = await db.raw<any[][]>(
+    `SELECT
+       COUNT(*) AS total,
+       SUM(CASE WHEN applied_at >= DATE_SUB(NOW(), INTERVAL 7 DAY) THEN 1 ELSE 0 END) AS newThisWeek,
+       SUM(CASE WHEN stage IN ('screened', 'offer') THEN 1 ELSE 0 END) AS inReview,
+       SUM(CASE WHEN stage = 'interview' THEN 1 ELSE 0 END) AS interviewing,
+       SUM(CASE WHEN stage = 'rejected' THEN 1 ELSE 0 END) AS rejected
+     FROM applications
+     WHERE organization_id = ?`,
+    [orgId],
+  );
+  const stats = rows[0]?.[0] ?? {};
+  return {
+    total: Number(stats.total ?? 0),
+    newThisWeek: Number(stats.newThisWeek ?? 0),
+    inReview: Number(stats.inReview ?? 0),
+    interviewing: Number(stats.interviewing ?? 0),
+    rejected: Number(stats.rejected ?? 0),
+  };
+}
 export async function listApplications(
   orgId: number,
   params: {

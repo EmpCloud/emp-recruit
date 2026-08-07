@@ -54,6 +54,11 @@ router.get("/", async (req: Request, res: Response, next: NextFunction) => {
       limit: req.query.limit ? parseInt(req.query.limit as string) : 20,
       status: req.query.status as string | undefined,
       search: req.query.search as string | undefined,
+      jobId: req.query.job_id as string | undefined,
+      dateFrom: req.query.date_from as string | undefined,
+      dateTo: req.query.date_to as string | undefined,
+      sort: req.query.sort as string | undefined,
+      order: req.query.order === "asc" ? "asc" : "desc",
     };
 
     // Employees can only see their own referrals
@@ -63,6 +68,17 @@ router.get("/", async (req: Request, res: Response, next: NextFunction) => {
 
     const result = await referralService.listReferrals(user.empcloudOrgId, params);
     sendSuccess(res, result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /stats
+router.get("/stats", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const user = req.user!;
+    const referrerId = user.role === "employee" ? user.empcloudUserId : undefined;
+    sendSuccess(res, await referralService.getReferralStats(user.empcloudOrgId, referrerId));
   } catch (err) {
     next(err);
   }

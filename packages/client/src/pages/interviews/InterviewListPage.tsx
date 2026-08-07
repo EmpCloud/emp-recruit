@@ -1,281 +1,64 @@
-import { useState, useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useQueries } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { Link, Navigate } from "react-router-dom";
-import { Calendar, Users, Plus, Search, ShieldAlert, AlertTriangle } from "lucide-react";
+import { Calendar, CheckCircle2, CircleDashed, Clock3, Eye, Plus, Search, Users } from "lucide-react";
+import type { InterviewStatus, InterviewType, PaginatedResponse } from "@emp-recruit/shared";
+import { apiGet } from "@/api/client";
+import { Badge } from "@/components/ui/badge";
+import { buttonVariants } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Pagination, DEFAULT_PAGE_SIZE } from "@/components/Pagination";
+import { ExportButtons } from "@/components/ExportButtons";
+import { fetchAllRows, type ExportColumn } from "@/lib/export";
 import { getUser } from "@/lib/auth-store";
 import { canAccessRecruit } from "@/lib/roles";
 import { cn, formatDate, formatTime } from "@/lib/utils";
 import { enumLabel } from "@/lib/enums";
 import { usePaginatedList } from "@/lib/usePaginatedList";
-import { Pagination, DEFAULT_PAGE_SIZE } from "@/components/Pagination";
-import { ExportButtons } from "@/components/ExportButtons";
-import { fetchAllRows, type ExportColumn } from "@/lib/export";
-import type { InterviewStatus, InterviewType } from "@emp-recruit/shared";
 
-interface InterviewRow {
-  id: string;
-  application_id: string;
-  type: InterviewType;
-  round: number;
-  title: string;
-  scheduled_at: string;
-  duration_minutes: number;
-  status: InterviewStatus;
-  candidate_name: string;
-  job_title: string;
-  panelist_count: number;
-}
-
+interface InterviewRow { id: string; application_id: string; type: InterviewType; round: number; title: string; scheduled_at: string; duration_minutes: number; status: InterviewStatus; candidate_name: string; job_title: string; panelist_count: number; }
 const INTERVIEW_COLUMNS: ExportColumn<InterviewRow>[] = [
-  { header: "Candidate", value: (i) => i.candidate_name },
-  { header: "Job", value: (i) => i.job_title },
-  { header: "Title", value: (i) => i.title },
-  { header: "Type", value: (i) => i.type },
-  { header: "Round", value: (i) => i.round },
-  { header: "Scheduled", value: (i) => (i.scheduled_at ? formatDate(i.scheduled_at) : "") },
-  { header: "Duration (min)", value: (i) => i.duration_minutes },
-  { header: "Status", value: (i) => i.status },
-  { header: "Panelists", value: (i) => i.panelist_count },
+  { header: "Candidate", value: (item) => item.candidate_name }, { header: "Job", value: (item) => item.job_title }, { header: "Title", value: (item) => item.title },
+  { header: "Type", value: (item) => item.type }, { header: "Round", value: (item) => item.round }, { header: "Scheduled", value: (item) => formatDate(item.scheduled_at) },
+  { header: "Duration (min)", value: (item) => item.duration_minutes }, { header: "Status", value: (item) => item.status }, { header: "Panelists", value: (item) => item.panelist_count },
 ];
-
-const STATUS_COLORS: Record<string, string> = {
-  scheduled: "bg-blue-100 text-blue-800",
-  in_progress: "bg-yellow-100 text-yellow-800",
-  completed: "bg-green-100 text-green-800",
-  cancelled: "bg-gray-100 text-gray-600",
-  no_show: "bg-red-100 text-red-800",
-};
-
-const STATUS_OPTIONS: { value: string; labelKey: string }[] = [
-  { value: "", labelKey: "interviews.list.statusAll" },
-  { value: "scheduled", labelKey: "interviews.list.statusScheduled" },
-  { value: "in_progress", labelKey: "interviews.list.statusInProgress" },
-  { value: "completed", labelKey: "interviews.list.statusCompleted" },
-  { value: "cancelled", labelKey: "interviews.list.statusCancelled" },
-  { value: "no_show", labelKey: "interviews.list.statusNoShow" },
-];
-
-// An interview is overdue if its scheduled time has passed but it hasn't been
-// completed, cancelled, or marked no-show yet. (BUG-07)
-function isOverdue(interview: InterviewRow): boolean {
-  if (interview.status !== "scheduled" && interview.status !== "in_progress") return false;
-  const when = new Date(interview.scheduled_at).getTime();
-  return Number.isFinite(when) && when < Date.now();
-}
+const STATUS_COLORS: Record<string, string> = { scheduled: "bg-blue-50 text-blue-700", in_progress: "bg-amber-50 text-amber-700", completed: "bg-green-50 text-green-700", cancelled: "bg-gray-100 text-gray-700", no_show: "bg-red-50 text-red-700" };
+const STATUS_OPTIONS = ["all", "scheduled", "in_progress", "completed", "cancelled", "no_show"] as const;
 
 export function InterviewListPage() {
-  const { t } = useTranslation();
-  const user = getUser();
+  const { t } = useTranslation(); const user = getUser();
+  if (user && !canAccessRecruit(user)) return <Navigate to="/dashboard" replace />;
+  const [page, setPage] = useState(1), [activeStatus, setActiveStatus] = useState("all"), [searchInput, setSearchInput] = useState(""), [search, setSearch] = useState(""), [typeFilter, setTypeFilter] = useState("all"), [dateRange, setDateRange] = useState("all"), [sort, setSort] = useState("soonest");
+  useEffect(() => { const timer = setTimeout(() => { setSearch(searchInput); setPage(1); }, 400); return () => clearTimeout(timer); }, [searchInput]);
+  const queryStatus = activeStatus === "all" ? "" : activeStatus;
+  const { rows, total, isLoading, isError } = usePaginatedList<InterviewRow>(["interviews"], "/interviews", { status: queryStatus, search }, page);
+  const countStatuses = ["all", "scheduled", "in_progress", "completed"] as const;
+  const countQueries = useQueries({ queries: countStatuses.map((status) => ({ queryKey: ["interview-count", status], queryFn: async () => (await apiGet<PaginatedResponse<InterviewRow>>("/interviews", { status: status === "all" ? undefined : status, page: 1, limit: 1 })).data?.total ?? 0, staleTime: 30_000 })) });
+  const counts = { all: countQueries[0].data ?? 0, scheduled: countQueries[1].data ?? 0, in_progress: countQueries[2].data ?? 0, completed: countQueries[3].data ?? 0 };
+  const displayRows = useMemo(() => rows.filter((item) => (typeFilter === "all" || item.type === typeFilter) && (dateRange === "all" || inRange(item.scheduled_at, dateRange))).sort((a, b) => sort === "soonest" ? +new Date(a.scheduled_at) - +new Date(b.scheduled_at) : +new Date(b.scheduled_at) - +new Date(a.scheduled_at)), [rows, activeStatus, typeFilter, dateRange, sort]);
+  const selectStatus = (value: string) => { setActiveStatus(value); setPage(1); };
+  const summary = [
+    { key: "all", label: "Total Interviews", icon: Calendar, tone: "bg-violet-100 text-violet-700", note: "Across all schedules" },
+    { key: "scheduled", label: "Scheduled", icon: Clock3, tone: "bg-blue-100 text-blue-700", note: "Upcoming interviews" },
+    { key: "in_progress", label: "In Progress", icon: CircleDashed, tone: "bg-amber-100 text-amber-700", note: "Happening now" },
+    { key: "completed", label: "Completed", icon: CheckCircle2, tone: "bg-green-100 text-green-700", note: "Finished interviews" },
+  ];
+  return <div className="space-y-5 pb-8">
+    <header className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between"><div><h1 className="text-2xl font-bold text-gray-900">{t("interviews.list.title")}</h1><p className="mt-1 text-sm text-gray-500">{t("interviews.list.subtitle")}</p></div><div className="flex flex-wrap gap-2"><ExportButtons baseName="interviews" title="Interviews" subtitle={`${total} interviews`} columns={INTERVIEW_COLUMNS} fetchRows={() => fetchAllRows<InterviewRow>("/interviews", { status: queryStatus, search })} /><Link to="/interviews/schedule" className={buttonVariants()}><Plus className="h-4 w-4" />{t("interviews.list.scheduleInterview")}</Link></div></header>
 
-  // RBAC: admin/HR roles OR a federated recruit:* permission can access.
-  if (user && !canAccessRecruit(user)) {
-    return <Navigate to="/dashboard" replace />;
-  }
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{summary.map(({ key, label, icon: Icon, tone, note }, index) => <Card key={key} className={cn("cursor-pointer transition hover:-translate-y-0.5 hover:shadow-md", activeStatus === key && "border-brand-400 ring-1 ring-brand-200")} onClick={() => selectStatus(key)}><CardContent className="flex items-center gap-4 p-4"><span className={cn("flex h-12 w-12 items-center justify-center rounded-xl", tone)}><Icon className="h-6 w-6" /></span><div><p className="text-sm font-medium text-gray-600">{label}</p>{countQueries[index]?.isLoading ? <Skeleton className="mt-1 h-7 w-10" /> : <p className="mt-0.5 text-2xl font-bold text-gray-900">{counts[key as keyof typeof counts]}</p>}<p className="text-xs text-gray-400">{note}</p></div></CardContent></Card>)}</div>
 
-  const [page, setPage] = useState(1);
-  const [statusFilter, setStatusFilter] = useState("");
-  const [searchInput, setSearchInput] = useState("");
-  const [search, setSearch] = useState("");
+    <Card><CardContent className="grid gap-2 p-3 md:grid-cols-2 xl:grid-cols-[minmax(260px,1.5fr)_repeat(4,minmax(150px,1fr))]"><label className="relative"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" /><Input value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder={t("interviews.list.searchPlaceholder")} className="pl-9" /></label><Select value={activeStatus} onValueChange={selectStatus}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{STATUS_OPTIONS.map((status) => <SelectItem key={status} value={status}>{status === "all" ? t("interviews.list.statusAll") : enumLabel(t, "interviewStatus", status)}</SelectItem>)}</SelectContent></Select><Select value={typeFilter} onValueChange={setTypeFilter}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All interview types</SelectItem>{["video", "phone", "onsite", "assignment"].map((type) => <SelectItem key={type} value={type}>{enumLabel(t, "interviewType", type)}</SelectItem>)}</SelectContent></Select><Select value={dateRange} onValueChange={setDateRange}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All time</SelectItem><SelectItem value="today">Today</SelectItem><SelectItem value="week">Next 7 days</SelectItem><SelectItem value="month">Next 30 days</SelectItem></SelectContent></Select><Select value={sort} onValueChange={setSort}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="soonest">Schedule (Soonest)</SelectItem><SelectItem value="latest">Schedule (Latest)</SelectItem></SelectContent></Select></CardContent></Card>
 
-  // Debounce the search box so we don't fire a request per keystroke.
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setSearch(searchInput);
-      setPage(1);
-    }, 400);
-    return () => clearTimeout(timer);
-  }, [searchInput]);
+    <div className="flex gap-2 overflow-x-auto">{["all", "scheduled", "in_progress", "completed"].map((status) => <button key={status} onClick={() => selectStatus(status)} className={cn("flex min-w-28 items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium", activeStatus === status ? status === "in_progress" ? "border-amber-500 bg-amber-50 text-amber-700" : status === "completed" ? "border-green-500 bg-green-50 text-green-700" : "border-brand-500 bg-brand-600 text-white" : "border-gray-200 bg-white text-gray-600")}>{status === "all" ? "All" : status.replace("_", " ").replace(/^./, (letter) => letter.toUpperCase())}<Badge variant="secondary" className="px-1.5">{counts[status as keyof typeof counts]}</Badge></button>)}</div>
 
-  const { rows, total, isLoading, isError } = usePaginatedList<InterviewRow>(
-    ["interviews"],
-    "/interviews",
-    { status: statusFilter, search },
-    page,
-  );
-
-  return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">{t("interviews.list.title")}</h1>
-          <p className="mt-1 text-sm text-gray-500">
-            {t("interviews.list.subtitle")}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <ExportButtons
-            baseName="interviews"
-            title="Interviews"
-            subtitle={`${total} interview${total !== 1 ? "s" : ""}${statusFilter ? ` (${statusFilter.replace("_", " ")})` : ""}`}
-            columns={INTERVIEW_COLUMNS}
-            fetchRows={() => fetchAllRows<InterviewRow>("/interviews", { status: statusFilter, search })}
-          />
-          <Link
-            to="/interviews/schedule"
-            className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-brand-700 transition-colors"
-          >
-            <Plus className="h-4 w-4" />
-            {t("interviews.list.scheduleInterview")}
-          </Link>
-        </div>
-      </div>
-
-      {/* Filters */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <div className="relative min-w-0 flex-1 sm:max-w-xs">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-          <input
-            type="text"
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-            placeholder={t("interviews.list.searchPlaceholder")}
-            className="h-10 w-full rounded-lg border border-gray-300 bg-white pl-10 pr-4 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-          />
-        </div>
-        <div>
-          <select
-            value={statusFilter}
-            onChange={(e) => {
-              setStatusFilter(e.target.value);
-              setPage(1);
-            }}
-            className="h-10 rounded-lg border border-gray-300 bg-white px-4 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-          >
-            {STATUS_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {t(opt.labelKey)}
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
-
-      {/* Table */}
-      <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white shadow-sm -mx-4 lg:mx-0">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                {t("interviews.list.colCandidate")}
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                {t("interviews.list.colJob")}
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                {t("interviews.list.colTypeRound")}
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                {t("interviews.list.colSchedule")}
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                {t("interviews.list.colStatus")}
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                {t("interviews.list.colPanelists")}
-              </th>
-              <th className="px-6 py-3 text-right text-xs font-medium uppercase tracking-wider text-gray-500">
-                {t("interviews.list.colActions")}
-              </th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-200 bg-white">
-            {isLoading && (
-              <tr>
-                <td colSpan={7} className="px-6 py-12 text-center text-sm text-gray-500">
-                  {t("interviews.list.loading")}
-                </td>
-              </tr>
-            )}
-            {isError && (
-              <tr>
-                <td colSpan={7} className="px-6 py-12 text-center text-sm text-red-500">
-                  {t("interviews.list.loadError")}
-                </td>
-              </tr>
-            )}
-            {!isLoading && !isError && rows.length === 0 && (
-              <tr>
-                <td colSpan={7} className="px-6 py-12 text-center text-sm text-gray-500">
-                  {t("interviews.list.empty")}
-                </td>
-              </tr>
-            )}
-            {rows.map((interview) => (
-              <tr key={interview.id} className="hover:bg-gray-50 transition-colors">
-                <td className="whitespace-nowrap px-6 py-4">
-                  <div className="text-sm font-medium text-gray-900">
-                    {interview.candidate_name}
-                  </div>
-                  <div className="text-xs text-gray-500">{interview.title}</div>
-                </td>
-                <td className="whitespace-nowrap px-6 py-4 text-sm text-gray-700">
-                  {interview.job_title}
-                </td>
-                <td className="whitespace-nowrap px-6 py-4">
-                  <div className="text-sm text-gray-900 capitalize">{interview.type}</div>
-                  <div className="text-xs text-gray-500">{t("interviews.list.round", { round: interview.round })}</div>
-                </td>
-                <td className="whitespace-nowrap px-6 py-4">
-                  <div className="flex items-center gap-1.5 text-sm text-gray-900">
-                    <Calendar className="h-3.5 w-3.5 text-gray-400" />
-                    {formatDate(interview.scheduled_at)}
-                  </div>
-                  <div className="text-xs text-gray-500">
-                    {t("interviews.list.timeDuration", {
-                      time: formatTime(interview.scheduled_at),
-                      minutes: interview.duration_minutes,
-                    })}
-                  </div>
-                </td>
-                <td className="whitespace-nowrap px-6 py-4">
-                  <div className="flex flex-col items-start gap-1">
-                    <span
-                      className={cn(
-                        "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium capitalize",
-                        STATUS_COLORS[interview.status] || "bg-gray-100 text-gray-800",
-                      )}
-                    >
-                      {enumLabel(t, "interviewStatus", interview.status)}
-                    </span>
-                    {isOverdue(interview) && (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-800">
-                        <AlertTriangle className="h-3 w-3" /> {t("interviews.list.overdue")}
-                      </span>
-                    )}
-                  </div>
-                </td>
-                <td className="whitespace-nowrap px-6 py-4">
-                  <div className="flex items-center gap-1.5 text-sm text-gray-700">
-                    <Users className="h-3.5 w-3.5 text-gray-400" />
-                    {interview.panelist_count}
-                  </div>
-                </td>
-                <td className="whitespace-nowrap px-6 py-4 text-right">
-                  <Link
-                    to={`/interviews/${interview.id}`}
-                    className="text-sm font-medium text-brand-600 hover:text-brand-800"
-                  >
-                    {t("interviews.list.view")}
-                  </Link>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-
-        {/* Pagination */}
-        {!isLoading && rows.length > 0 && (
-          <div className="border-t border-gray-200 bg-white px-6 py-3">
-            <Pagination
-              page={page}
-              perPage={DEFAULT_PAGE_SIZE}
-              total={total}
-              onPageChange={setPage}
-            />
-          </div>
-        )}
-      </div>
-    </div>
-  );
+    <Card className="overflow-hidden">{isLoading ? <CardContent className="space-y-3 p-5">{Array.from({ length: 8 }).map((_, index) => <Skeleton key={index} className="h-11 w-full" />)}</CardContent> : isError ? <CardContent className="py-16 text-center text-red-500">{t("interviews.list.loadError")}</CardContent> : !displayRows.length ? <CardContent className="flex min-h-64 flex-col items-center justify-center text-center"><span className="rounded-full bg-brand-50 p-4"><Calendar className="h-8 w-8 text-brand-600" /></span><p className="mt-4 font-semibold text-gray-900">{t("interviews.list.empty")}</p><Link to="/interviews/schedule" className={cn(buttonVariants({ size: "sm" }), "mt-4")}><Plus className="h-4 w-4" />{t("interviews.list.scheduleInterview")}</Link></CardContent> : <><Table><TableHeader className="bg-gray-50"><TableRow><TableHead>{t("interviews.list.colCandidate")}</TableHead><TableHead>{t("interviews.list.colJob")}</TableHead><TableHead>{t("interviews.list.colTypeRound")}</TableHead><TableHead>{t("interviews.list.colSchedule")}</TableHead><TableHead>{t("interviews.list.colStatus")}</TableHead><TableHead>{t("interviews.list.colPanelists")}</TableHead><TableHead className="text-right">{t("interviews.list.colActions")}</TableHead></TableRow></TableHeader><TableBody>{displayRows.map((interview, index) => <TableRow key={interview.id}><TableCell><div className="flex min-w-[190px] items-center gap-3"><span className={cn("flex h-9 w-9 items-center justify-center rounded-full text-xs font-semibold", index % 3 === 0 ? "bg-violet-100 text-violet-700" : index % 3 === 1 ? "bg-blue-100 text-blue-700" : "bg-teal-100 text-teal-700")}>{initials(interview.candidate_name)}</span><div><p className="font-semibold text-gray-900">{interview.candidate_name}</p><p className="text-xs text-gray-500">{interview.title}</p></div></div></TableCell><TableCell className="min-w-[180px] font-medium text-gray-700">{interview.job_title}</TableCell><TableCell><Badge className="border-0 bg-blue-50 capitalize text-blue-700">{enumLabel(t, "interviewType", interview.type)}</Badge><p className="mt-1 text-xs text-gray-500">{t("interviews.list.round", { round: interview.round })}</p></TableCell><TableCell className="whitespace-nowrap"><p className="flex items-center gap-1.5 font-medium text-gray-900"><Calendar className="h-3.5 w-3.5 text-gray-400" />{formatDate(interview.scheduled_at)}</p><p className="text-xs text-gray-500">{t("interviews.list.timeDuration", { time: formatTime(interview.scheduled_at), minutes: interview.duration_minutes })}</p></TableCell><TableCell><div className="flex flex-wrap gap-1"><Badge className={cn("border-0 capitalize", STATUS_COLORS[interview.status])}>{enumLabel(t, "interviewStatus", interview.status)}</Badge></div></TableCell><TableCell><span className="flex items-center gap-2 text-gray-600"><Users className="h-4 w-4" />{interview.panelist_count}</span></TableCell><TableCell className="text-right"><Link to={`/interviews/${interview.id}`} className={cn(buttonVariants({ variant: "outline", size: "sm" }), "h-8")}><Eye className="h-3.5 w-3.5" />{t("interviews.list.view")}</Link></TableCell></TableRow>)}</TableBody></Table><Pagination className="border-t border-gray-200 px-4 py-3" page={page} perPage={DEFAULT_PAGE_SIZE} total={total} onPageChange={setPage} /></>}</Card>
+  </div>;
 }
+function initials(name: string) { return name.split(" ").filter(Boolean).map((part) => part[0]).slice(0, 2).join("").toUpperCase(); }
+function inRange(value: string, range: string) { const date = new Date(value), now = new Date(); if (range === "today") return date.toDateString() === now.toDateString(); const days = range === "week" ? 7 : 30; const end = new Date(now); end.setDate(end.getDate() + days); return date >= now && date <= end; }

@@ -52,6 +52,16 @@ router.get("/", async (req: Request, res: Response, next: NextFunction) => {
 });
 
 // POST / — create application
+// GET /stats — application summary cards
+router.get("/stats", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const stats = await applicationService.getApplicationStats(req.user!.empcloudOrgId);
+    return sendSuccess(res, stats);
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.post("/", async (req: Request, res: Response, next: NextFunction) => {
   try {
     const data = createApplicationSchema.parse(req.body);

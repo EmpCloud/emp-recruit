@@ -24,6 +24,9 @@ router.get("/", async (req: Request, res: Response, next: NextFunction) => {
   try {
     const query = paginationSchema.parse(req.query);
     const status = req.query.status as string | undefined;
+    const department = req.query.department as string | undefined;
+    const location = req.query.location as string | undefined;
+    const employment_type = req.query.employment_type as string | undefined;
     const orgId = req.user!.empcloudOrgId;
 
     const result = await jobService.listJobs(orgId, {
@@ -31,6 +34,9 @@ router.get("/", async (req: Request, res: Response, next: NextFunction) => {
       perPage: query.perPage,
       status,
       search: query.search,
+      department,
+      location,
+      employment_type,
       sort: query.sort,
       order: query.order,
     });

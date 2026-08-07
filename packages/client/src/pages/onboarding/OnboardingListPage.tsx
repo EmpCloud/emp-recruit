@@ -1,394 +1,72 @@
 import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
-import {
-  ClipboardList,
-  Plus,
-  Calendar,
-  User,
-  Search,
-  X,
-} from "lucide-react";
+import { Calendar, CheckCircle2, CircleDashed, ClipboardList, Grid2X2, Hourglass, List, Plus, Search, UserRound, X } from "lucide-react";
 import toast from "react-hot-toast";
 import { apiGet, apiPost } from "@/api/client";
-import { formatDate } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Pagination } from "@/components/Pagination";
+import { cn, formatDate } from "@/lib/utils";
 import type { OnboardingStatus, OnboardingTemplate, PaginatedResponse } from "@emp-recruit/shared";
 
-interface EligibleApplication {
-  id: string;
-  stage: string;
-  candidate_name: string;
-  job_title: string;
-}
-
-interface EnrichedChecklist {
-  id: string;
-  organization_id: number;
-  application_id: string;
-  candidate_id: string;
-  template_id: string;
-  status: OnboardingStatus;
-  started_at: string | null;
-  completed_at: string | null;
-  created_at: string;
-  updated_at: string;
-  candidate_name: string;
-  job_title: string;
-  joining_date: string | null;
-  progress: { total: number; completed: number; percentage: number };
-}
-
-const STATUS_TABS: { labelKey: string; value: string }[] = [
-  { labelKey: "onboarding.status.all", value: "all" },
-  { labelKey: "onboarding.status.notStarted", value: "not_started" },
-  { labelKey: "onboarding.status.inProgress", value: "in_progress" },
-  { labelKey: "onboarding.status.completed", value: "completed" },
-];
-
-const STATUS_CONFIG: Record<string, { label: string; className: string }> = {
-  not_started: { label: "onboarding.status.notStarted", className: "bg-gray-100 text-gray-700" },
-  in_progress: { label: "onboarding.status.inProgress", className: "bg-blue-100 text-blue-700" },
-  completed: { label: "onboarding.status.completed", className: "bg-green-100 text-green-700" },
+interface EligibleApplication { id: string; stage: string; candidate_name: string; job_title: string; }
+interface EnrichedChecklist { id: string; application_id: string; candidate_id: string; status: OnboardingStatus; created_at: string; candidate_name: string; job_title: string; joining_date: string | null; progress: { total: number; completed: number; percentage: number }; }
+const STATUS_TABS = [
+  { labelKey: "onboarding.status.all", value: "all" }, { labelKey: "onboarding.status.notStarted", value: "not_started" },
+  { labelKey: "onboarding.status.inProgress", value: "in_progress" }, { labelKey: "onboarding.status.completed", value: "completed" },
+] as const;
+const STATUS_CONFIG: Record<string, { label: string; className: string; progress: string }> = {
+  not_started: { label: "onboarding.status.notStarted", className: "bg-gray-100 text-gray-700", progress: "bg-gray-400" },
+  in_progress: { label: "onboarding.status.inProgress", className: "bg-blue-50 text-blue-700", progress: "bg-brand-500" },
+  completed: { label: "onboarding.status.completed", className: "bg-green-50 text-green-700", progress: "bg-green-500" },
 };
-
-function ProgressBar({ percentage }: { percentage: number }) {
-  return (
-    <div className="flex items-center gap-2">
-      <div className="h-2 flex-1 rounded-full bg-gray-200">
-        <div
-          className={`h-2 rounded-full transition-all ${
-            percentage >= 100 ? "bg-green-500" : percentage > 0 ? "bg-brand-500" : "bg-gray-300"
-          }`}
-          style={{ width: `${Math.min(percentage, 100)}%` }}
-        />
-      </div>
-      <span className="text-xs font-medium text-gray-600 tabular-nums">{percentage}%</span>
-    </div>
-  );
-}
+const SUMMARY = [
+  { status: "all", label: "Total New Hires", note: "All time", icon: UserRound, tone: "bg-violet-100 text-violet-700" },
+  { status: "in_progress", label: "In Progress", note: "Active onboarding", icon: CircleDashed, tone: "bg-blue-100 text-blue-700" },
+  { status: "completed", label: "Completed", note: "Ready to start", icon: CheckCircle2, tone: "bg-green-100 text-green-700" },
+  { status: "not_started", label: "Not Started", note: "Needs attention", icon: Hourglass, tone: "bg-orange-100 text-orange-700" },
+] as const;
 
 export function OnboardingListPage() {
-  const { t } = useTranslation();
-  const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<string>("all");
-  const [page, setPage] = useState(1);
-  const [search, setSearch] = useState("");
-  const [showStartModal, setShowStartModal] = useState(false);
+  const { t } = useTranslation(); const queryClient = useQueryClient();
+  const [activeTab, setActiveTab] = useState("all"), [page, setPage] = useState(1), [search, setSearch] = useState(""), [sort, setSort] = useState("newest"), [view, setView] = useState<"grid" | "list">("grid"), [showStartModal, setShowStartModal] = useState(false);
   const [startForm, setStartForm] = useState({ application_id: "", template_id: "", joining_date: "" });
+  const { data, isLoading } = useQuery({ queryKey: ["onboarding-checklists", activeTab, page], queryFn: () => apiGet<PaginatedResponse<EnrichedChecklist>>("/onboarding/checklists", { ...(activeTab !== "all" && { status: activeTab }), page, limit: 12 }) });
+  const countQueries = useQueries({ queries: STATUS_TABS.map((tab) => ({ queryKey: ["onboarding-count", tab.value], queryFn: async () => (await apiGet<PaginatedResponse<EnrichedChecklist>>("/onboarding/checklists", { status: tab.value === "all" ? undefined : tab.value, page: 1, limit: 1 })).data?.total ?? 0, staleTime: 30_000 })) });
+  const counts = Object.fromEntries(STATUS_TABS.map((tab, index) => [tab.value, countQueries[index]?.data ?? 0]));
+  const { data: eligibleApps = [] } = useQuery({ queryKey: ["onboarding-eligible-applications"], queryFn: async () => { const [offer, hired, existing] = await Promise.all([apiGet<PaginatedResponse<EligibleApplication>>("/applications", { stage: "offer", perPage: 100 }), apiGet<PaginatedResponse<EligibleApplication>>("/applications", { stage: "hired", perPage: 100 }), apiGet<PaginatedResponse<{ application_id: string; status: OnboardingStatus }>>("/onboarding/checklists", { perPage: 200 })]); const taken = new Set((existing.data?.data ?? []).filter((item) => item.status !== "completed").map((item) => item.application_id)); return [...(offer.data?.data ?? []), ...(hired.data?.data ?? [])].filter((item) => !taken.has(item.id)); }, enabled: showStartModal });
+  const { data: templatesRes } = useQuery({ queryKey: ["onboarding-templates"], queryFn: () => apiGet<(OnboardingTemplate & { task_count: number })[]>("/onboarding/templates"), enabled: showStartModal });
+  const templates = templatesRes?.data ?? [];
+  const startOnboarding = useMutation({ mutationFn: () => apiPost("/onboarding/checklists", startForm), onSuccess: () => { toast.success(t("onboarding.list.toastStarted")); queryClient.invalidateQueries({ queryKey: ["onboarding-checklists"] }); queryClient.invalidateQueries({ queryKey: ["onboarding-count"] }); setShowStartModal(false); setStartForm({ application_id: "", template_id: "", joining_date: "" }); }, onError: (error: any) => toast.error(error?.response?.data?.error?.message || t("onboarding.list.toastStartFailed")) });
+  const payload = data?.data;
+  const filtered = [...(payload?.data ?? [])].filter((item) => !search || item.candidate_name.toLowerCase().includes(search.toLowerCase()) || item.job_title.toLowerCase().includes(search.toLowerCase())).sort((a, b) => sort === "newest" ? +new Date(b.created_at) - +new Date(a.created_at) : +new Date(a.created_at) - +new Date(b.created_at));
+  const selectStatus = (status: string) => { setActiveTab(status); setPage(1); };
 
-  const { data, isLoading } = useQuery({
-    queryKey: ["onboarding-checklists", activeTab, page],
-    queryFn: () =>
-      apiGet<PaginatedResponse<EnrichedChecklist>>("/onboarding/checklists", {
-        ...(activeTab !== "all" && { status: activeTab }),
-        page,
-        limit: 20,
-      }),
-  });
+  return <div className="space-y-5 pb-8">
+    <header className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between"><div className="flex items-center gap-3"><span className="flex h-11 w-11 items-center justify-center rounded-xl bg-brand-50 text-brand-600"><ClipboardList className="h-6 w-6" /></span><div><h1 className="text-2xl font-bold text-gray-900">{t("onboarding.list.title")}</h1><p className="text-sm text-gray-500">{t("onboarding.list.subtitle")}</p></div></div><div className="flex flex-wrap gap-2"><Link to="/onboarding/templates" className={buttonVariants({ variant: "outline" })}><ClipboardList className="h-4 w-4" />{t("onboarding.list.manageTemplates")}</Link><Button onClick={() => setShowStartModal(true)}><Plus className="h-4 w-4" />{t("onboarding.list.startOnboarding")}</Button></div></header>
 
-  // Candidates eligible to onboard: applications at the offer or hired stage
-  // that don't already have an active checklist — the server rejects those with
-  // "An active onboarding checklist already exists", so offering them in the
-  // picker only produced a 400 (BUG-009). Fetched while the Start modal is open.
-  const { data: eligibleRes } = useQuery({
-    queryKey: ["onboarding-eligible-applications"],
-    queryFn: async () => {
-      const [offer, hired, existing] = await Promise.all([
-        apiGet<PaginatedResponse<EligibleApplication>>("/applications", { stage: "offer", perPage: 100 }),
-        apiGet<PaginatedResponse<EligibleApplication>>("/applications", { stage: "hired", perPage: 100 }),
-        apiGet<PaginatedResponse<{ application_id: string; status: OnboardingStatus }>>(
-          "/onboarding/checklists",
-          { perPage: 200 },
-        ),
-      ]);
-      // Only a completed checklist frees the application up again.
-      const taken = new Set(
-        (existing.data?.data ?? [])
-          .filter((c) => c.status !== "completed")
-          .map((c) => c.application_id),
-      );
-      return [...(offer.data?.data ?? []), ...(hired.data?.data ?? [])].filter((a) => !taken.has(a.id));
-    },
-    enabled: showStartModal,
-  });
-  const eligibleApps = eligibleRes ?? [];
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{SUMMARY.map(({ status, label, note, icon: Icon, tone }) => { const index = STATUS_TABS.findIndex((item) => item.value === status); return <Card key={status} className={cn("cursor-pointer transition hover:-translate-y-0.5 hover:shadow-md", activeTab === status && "border-brand-400 ring-1 ring-brand-200")} onClick={() => selectStatus(status)}><CardContent className="flex items-center gap-4 p-4"><span className={cn("flex h-12 w-12 items-center justify-center rounded-2xl", tone)}><Icon className="h-6 w-6" /></span><div><p className="text-xs font-medium text-gray-500">{label}</p>{countQueries[index]?.isLoading ? <Skeleton className="mt-1 h-7 w-10" /> : <p className="text-2xl font-bold text-gray-900">{counts[status]}</p>}<p className="text-xs text-gray-400">{note}</p></div></CardContent></Card>; })}</div>
 
-  const { data: templatesRes } = useQuery({
-    queryKey: ["onboarding-templates"],
-    queryFn: () => apiGet<(OnboardingTemplate & { task_count: number })[]>("/onboarding/templates"),
-    enabled: showStartModal,
-  });
-  const startTemplates = templatesRes?.data ?? [];
+    <Card><CardContent className="flex flex-col gap-3 p-3 lg:flex-row"><div className="relative flex-1"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" /><Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={t("onboarding.list.searchPlaceholder")} className="pl-9" /></div><Select value={activeTab} onValueChange={selectStatus}><SelectTrigger className="lg:w-52"><SelectValue /></SelectTrigger><SelectContent>{STATUS_TABS.map((tab) => <SelectItem key={tab.value} value={tab.value}>{t(tab.labelKey)}</SelectItem>)}</SelectContent></Select><Select value={sort} onValueChange={setSort}><SelectTrigger className="lg:w-48"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="newest">Newest first</SelectItem><SelectItem value="oldest">Oldest first</SelectItem></SelectContent></Select><div className="flex overflow-hidden rounded-lg border border-gray-300"><Button variant="ghost" size="icon" onClick={() => setView("grid")} className={cn("rounded-none", view === "grid" && "bg-brand-50 text-brand-600")}><Grid2X2 className="h-4 w-4" /></Button><Button variant="ghost" size="icon" onClick={() => setView("list")} className={cn("rounded-none border-l border-gray-300", view === "list" && "bg-brand-50 text-brand-600")}><List className="h-4 w-4" /></Button></div></CardContent></Card>
 
-  const startOnboarding = useMutation({
-    mutationFn: () => apiPost("/onboarding/checklists", startForm),
-    onSuccess: () => {
-      toast.success(t("onboarding.list.toastStarted"));
-      queryClient.invalidateQueries({ queryKey: ["onboarding-checklists"] });
-      setShowStartModal(false);
-      setStartForm({ application_id: "", template_id: "", joining_date: "" });
-    },
-    onError: (err: any) => toast.error(err?.response?.data?.error?.message || t("onboarding.list.toastStartFailed")),
-  });
+    <div className="overflow-x-auto border-b border-gray-200"><div className="flex min-w-max gap-7">{STATUS_TABS.map((tab) => <button key={tab.value} onClick={() => selectStatus(tab.value)} className={cn("flex items-center gap-2 border-b-2 px-1 py-3 text-sm font-medium", activeTab === tab.value ? "border-brand-600 text-brand-600" : "border-transparent text-gray-500")}>{t(tab.labelKey)}<Badge variant="secondary">{counts[tab.value]}</Badge></button>)}</div></div>
 
-  const checklists = data?.data;
-  const filtered = checklists?.data?.filter(
-    (c) =>
-      !search ||
-      c.candidate_name.toLowerCase().includes(search.toLowerCase()) ||
-      c.job_title.toLowerCase().includes(search.toLowerCase()),
-  );
+    {isLoading ? <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{Array.from({ length: 6 }).map((_, index) => <Skeleton key={index} className="h-72 rounded-xl" />)}</div> : !filtered.length ? <Card className="border-dashed"><CardContent className="flex min-h-64 flex-col items-center justify-center text-center"><span className="rounded-full bg-brand-50 p-4"><ClipboardList className="h-8 w-8 text-brand-600" /></span><h3 className="mt-4 font-semibold text-gray-900">{t("onboarding.list.emptyTitle")}</h3><p className="mt-1 text-sm text-gray-500">{t("onboarding.list.emptyDescription")}</p><Button className="mt-4" onClick={() => setShowStartModal(true)}><Plus className="h-4 w-4" />{t("onboarding.list.startOnboarding")}</Button></CardContent></Card> : <div className={cn("grid gap-4", view === "grid" ? "md:grid-cols-2 xl:grid-cols-3" : "grid-cols-1")}>{filtered.map((checklist) => <ChecklistCard key={checklist.id} checklist={checklist} t={t} compact={view === "list"} />)}</div>}
 
-  return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">{t("onboarding.list.title")}</h1>
-          <p className="mt-1 text-sm text-gray-500">{t("onboarding.list.subtitle")}</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Link
-            to="/onboarding/templates"
-            className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
-          >
-            {t("onboarding.list.manageTemplates")}
-          </Link>
-          <button
-            onClick={() => setShowStartModal(true)}
-            className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 transition-colors"
-          >
-            <Plus className="h-4 w-4" />
-            {t("onboarding.list.startOnboarding")}
-          </button>
-        </div>
-      </div>
+    {payload && <Pagination page={page} perPage={12} total={payload.total} onPageChange={setPage} />}
 
-      {/* Start Onboarding modal — assign a template to an offer/hired
-          application (wires the existing POST /onboarding/checklists) */}
-      {showStartModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="fixed inset-0 bg-black/50" onClick={() => setShowStartModal(false)} />
-          <div className="relative w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
-            <div className="flex items-start justify-between">
-              <div>
-                <h2 className="text-lg font-semibold text-gray-900">
-                  {t("onboarding.list.startOnboarding")}
-                </h2>
-                <p className="mt-0.5 text-sm text-gray-500">{t("onboarding.list.startModalSubtitle")}</p>
-              </div>
-              <button
-                onClick={() => setShowStartModal(false)}
-                className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-            <form
-              className="mt-4 space-y-4"
-              onSubmit={(e) => {
-                e.preventDefault();
-                startOnboarding.mutate();
-              }}
-            >
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  {t("onboarding.list.applicationLabel")}
-                </label>
-                <select
-                  required
-                  value={startForm.application_id}
-                  onChange={(e) => setStartForm({ ...startForm, application_id: e.target.value })}
-                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-                >
-                  <option value="">
-                    {eligibleApps.length === 0
-                      ? t("onboarding.list.noEligible")
-                      : t("onboarding.list.applicationPlaceholder")}
-                  </option>
-                  {eligibleApps.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.candidate_name} — {a.job_title} ({a.stage})
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  {t("onboarding.list.templateLabel")}
-                </label>
-                <select
-                  required
-                  value={startForm.template_id}
-                  onChange={(e) => setStartForm({ ...startForm, template_id: e.target.value })}
-                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-                >
-                  <option value="">{t("onboarding.list.templatePlaceholder")}</option>
-                  {startTemplates.map((tp) => (
-                    <option key={tp.id} value={tp.id}>
-                      {tp.name}
-                      {tp.department ? ` — ${tp.department}` : ""}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700">
-                  {t("onboarding.list.joiningDateLabel")}
-                </label>
-                <input
-                  type="date"
-                  required
-                  value={startForm.joining_date}
-                  onChange={(e) => setStartForm({ ...startForm, joining_date: e.target.value })}
-                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-                />
-              </div>
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowStartModal(false)}
-                  className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
-                >
-                  {t("onboarding.templates.cancel")}
-                </button>
-                <button
-                  type="submit"
-                  disabled={startOnboarding.isPending}
-                  className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50 transition-colors"
-                >
-                  {t("onboarding.list.startButton")}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Search */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-        <input
-          type="text"
-          placeholder={t("onboarding.list.searchPlaceholder")}
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="w-full rounded-lg border border-gray-300 bg-white py-2 pl-10 pr-4 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-        />
-      </div>
-
-      {/* Status Tabs */}
-      <div className="border-b border-gray-200">
-        <nav className="-mb-px flex gap-6" aria-label={t("onboarding.list.statusTabsAria")}>
-          {STATUS_TABS.map((tab) => (
-            <button
-              key={tab.value}
-              onClick={() => { setActiveTab(tab.value); setPage(1); }}
-              className={`whitespace-nowrap border-b-2 px-1 py-3 text-sm font-medium transition-colors ${
-                activeTab === tab.value
-                  ? "border-brand-600 text-brand-600"
-                  : "border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700"
-              }`}
-            >
-              {t(tab.labelKey)}
-            </button>
-          ))}
-        </nav>
-      </div>
-
-      {/* Content */}
-      {isLoading ? (
-        <div className="flex h-64 items-center justify-center">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-brand-600 border-t-transparent" />
-        </div>
-      ) : !filtered || filtered.length === 0 ? (
-        <div className="flex h-64 flex-col items-center justify-center rounded-lg border-2 border-dashed border-gray-300 bg-white">
-          <ClipboardList className="h-12 w-12 text-gray-400" />
-          <h3 className="mt-4 text-sm font-medium text-gray-900">{t("onboarding.list.emptyTitle")}</h3>
-          <p className="mt-1 text-sm text-gray-500">
-            {t("onboarding.list.emptyDescription")}
-          </p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {filtered.map((checklist) => {
-            const sConfig = STATUS_CONFIG[checklist.status] || STATUS_CONFIG.not_started;
-            return (
-              <Link
-                key={checklist.id}
-                to={`/onboarding/${checklist.id}`}
-                className="group rounded-lg border border-gray-200 bg-white p-5 shadow-sm hover:border-brand-300 hover:shadow-md transition-all"
-              >
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-brand-50 text-brand-600">
-                      <User className="h-5 w-5" />
-                    </div>
-                    <div>
-                      <p className="font-medium text-gray-900 group-hover:text-brand-600 transition-colors">
-                        {checklist.candidate_name}
-                      </p>
-                      <p className="text-sm text-gray-500">{checklist.job_title}</p>
-                    </div>
-                  </div>
-                  <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${sConfig.className}`}>
-                    {t(sConfig.label)}
-                  </span>
-                </div>
-
-                <div className="mt-4">
-                  <ProgressBar percentage={checklist.progress.percentage} />
-                  <p className="mt-1 text-xs text-gray-500">
-                    {checklist.progress.total > 0
-                      ? t("onboarding.list.tasksCompleted", {
-                          completed: checklist.progress.completed,
-                          total: checklist.progress.total,
-                        })
-                      : t("onboarding.list.noTasksYet")}
-                  </p>
-                </div>
-
-                {checklist.joining_date && (
-                  <div className="mt-3 flex items-center gap-1.5 text-xs text-gray-500">
-                    <Calendar className="h-3.5 w-3.5" />
-                    {t("onboarding.list.joining", { date: formatDate(checklist.joining_date) })}
-                  </div>
-                )}
-              </Link>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Pagination */}
-      {checklists && checklists.totalPages > 1 && (
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-gray-500">
-            {t("onboarding.list.pageInfo", {
-              page: checklists.page,
-              totalPages: checklists.totalPages,
-              total: checklists.total,
-            })}
-          </p>
-          <div className="flex gap-2">
-            <button
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page <= 1}
-              className="rounded-md border border-gray-300 bg-white px-3 py-1 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {t("onboarding.list.previous")}
-            </button>
-            <button
-              onClick={() => setPage((p) => p + 1)}
-              disabled={page >= (checklists?.totalPages || 1)}
-              className="rounded-md border border-gray-300 bg-white px-3 py-1 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {t("onboarding.list.next")}
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
+    {showStartModal && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setShowStartModal(false)}><Card className="w-full max-w-md" onClick={(event) => event.stopPropagation()}><CardHeader className="flex-row items-start justify-between space-y-0"><div><CardTitle>{t("onboarding.list.startOnboarding")}</CardTitle><p className="mt-1 text-sm text-gray-500">{t("onboarding.list.startModalSubtitle")}</p></div><Button variant="ghost" size="icon" onClick={() => setShowStartModal(false)}><X className="h-5 w-5" /></Button></CardHeader><CardContent className="space-y-4"><div><label className="mb-1.5 block text-sm font-medium text-gray-700">{t("onboarding.list.applicationLabel")}</label><Select value={startForm.application_id || undefined} onValueChange={(value) => setStartForm((current) => ({ ...current, application_id: value }))}><SelectTrigger><SelectValue placeholder={eligibleApps.length ? t("onboarding.list.applicationPlaceholder") : t("onboarding.list.noEligible")} /></SelectTrigger><SelectContent>{eligibleApps.map((app) => <SelectItem key={app.id} value={app.id}>{app.candidate_name} — {app.job_title}</SelectItem>)}</SelectContent></Select></div><div><label className="mb-1.5 block text-sm font-medium text-gray-700">{t("onboarding.list.templateLabel")}</label><Select value={startForm.template_id || undefined} onValueChange={(value) => setStartForm((current) => ({ ...current, template_id: value }))}><SelectTrigger><SelectValue placeholder={t("onboarding.list.templatePlaceholder")} /></SelectTrigger><SelectContent>{templates.map((template) => <SelectItem key={template.id} value={template.id}>{template.name}{template.department ? ` — ${template.department}` : ""}</SelectItem>)}</SelectContent></Select></div><div><label className="mb-1.5 block text-sm font-medium text-gray-700">{t("onboarding.list.joiningDateLabel")}</label><Input type="date" value={startForm.joining_date} onChange={(event) => setStartForm((current) => ({ ...current, joining_date: event.target.value }))} /></div><div className="flex justify-end gap-2 pt-2"><Button variant="outline" onClick={() => setShowStartModal(false)}>{t("onboarding.templates.cancel")}</Button><Button onClick={() => startOnboarding.mutate()} disabled={!startForm.application_id || !startForm.template_id || !startForm.joining_date || startOnboarding.isPending}>{t("onboarding.list.startButton")}</Button></div></CardContent></Card></div>}
+  </div>;
 }
+
+function ChecklistCard({ checklist, t, compact }: { checklist: EnrichedChecklist; t: (key: string, options?: any) => string; compact: boolean }) {
+  const config = STATUS_CONFIG[checklist.status] || STATUS_CONFIG.not_started; const remaining = Math.max(0, checklist.progress.total - checklist.progress.completed); const initials = checklist.candidate_name.split(" ").map((part) => part[0]).slice(0, 2).join("");
+  return <Card className="overflow-hidden transition hover:-translate-y-0.5 hover:border-brand-300 hover:shadow-md"><CardContent className={cn("p-4", compact && "md:flex md:items-center md:gap-6")}><div className={cn("flex items-start justify-between gap-3", compact && "md:w-72 md:shrink-0")}><div className="flex min-w-0 items-center gap-3"><span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-brand-50 text-sm font-semibold text-brand-700">{initials}</span><div className="min-w-0"><p className="truncate font-semibold text-gray-900">{checklist.candidate_name}</p><p className="truncate text-xs text-gray-500">{checklist.job_title}</p></div></div><Badge className={cn("shrink-0 border-0", config.className)}>{t(config.label)}</Badge></div><div className={cn("mt-4", compact && "md:mt-0 md:min-w-56 md:flex-1")}><div className="flex items-center gap-3"><div className="h-2 flex-1 overflow-hidden rounded-full bg-gray-200"><div className={cn("h-full rounded-full", config.progress)} style={{ width: `${Math.min(checklist.progress.percentage, 100)}%` }} /></div><span className="text-xs font-semibold text-gray-700">{checklist.progress.percentage}%</span></div><p className="mt-1 text-xs text-gray-500">{checklist.progress.total ? t("onboarding.list.tasksCompleted", { completed: checklist.progress.completed, total: checklist.progress.total }) : t("onboarding.list.noTasksYet")}</p></div>{!compact && <div className="mt-4 rounded-lg border border-gray-200 bg-gray-50 p-3"><p className="mb-2 text-xs font-semibold text-gray-600">Checklist preview</p><PreviewRow done={checklist.progress.completed > 0} label="Completed tasks" value={String(checklist.progress.completed)} /><PreviewRow done={remaining === 0 && checklist.progress.total > 0} label="Remaining tasks" value={String(remaining)} /><PreviewRow done={checklist.progress.percentage === 100} label="Overall readiness" value={`${checklist.progress.percentage}%`} /></div>}<div className={cn("mt-4 flex items-center justify-between border-t border-gray-200 pt-3", compact && "md:mt-0 md:w-72 md:border-l md:border-t-0 md:pl-5 md:pt-0")}><p className="flex items-center gap-1.5 text-xs text-gray-500"><Calendar className="h-3.5 w-3.5" />{checklist.joining_date ? t("onboarding.list.joining", { date: formatDate(checklist.joining_date) }) : "Joining date pending"}</p><Link to={`/onboarding/${checklist.id}`} className={buttonVariants({ variant: "outline", size: "sm" })}>View Checklist</Link></div></CardContent></Card>;
+}
+function PreviewRow({ done, label, value }: { done: boolean; label: string; value: string }) { return <div className="flex items-center gap-2 border-t border-gray-200 py-2 first:border-t-0"><span className={cn("flex h-4 w-4 items-center justify-center rounded-full border", done ? "border-green-500 bg-green-500 text-white" : "border-gray-300")} >{done && <CheckCircle2 className="h-3 w-3" />}</span><span className="flex-1 text-xs text-gray-600">{label}</span><span className="text-xs font-medium text-gray-500">{value}</span></div>; }
