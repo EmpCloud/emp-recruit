@@ -394,19 +394,21 @@ export function JobDetailPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="mx-auto max-w-[1500px] space-y-6">
       {/* Header */}
-      <div className="flex items-start justify-between">
-        <div className="flex items-start gap-4">
+      <section className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6">
+      <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+        <div className="flex min-w-0 items-start gap-3 sm:gap-4">
           <button
             onClick={() => navigate("/jobs")}
-            className="mt-1 rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+            aria-label="Back to Job Postings"
+            className="mt-0.5 shrink-0 rounded-xl border border-gray-200 p-2 text-gray-500 transition-colors hover:bg-gray-50 hover:text-gray-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
           >
             <ArrowLeft className="h-5 w-5" />
           </button>
-          <div>
-            <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-bold text-gray-900">{job.title}</h1>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2.5">
+              <h1 className="min-w-0 break-words text-balance text-2xl font-bold tracking-tight text-gray-900 sm:text-3xl">{job.title}</h1>
               <span
                 className={cn(
                   "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium capitalize",
@@ -416,7 +418,7 @@ export function JobDetailPage() {
                 {enumLabel(t, "jobStatus", job.status)}
               </span>
             </div>
-            <div className="mt-2 flex flex-wrap gap-4 text-sm text-gray-500">
+            <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2 text-sm text-gray-500">
               {job.department && (
                 <span className="inline-flex items-center gap-1">
                   <Briefcase className="h-4 w-4" /> {job.department}
@@ -455,11 +457,11 @@ export function JobDetailPage() {
           </div>
         </div>
 
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2 xl:max-w-[38rem] xl:justify-end">
           {job.status === "draft" && (
             <button
               onClick={() => statusMutation.mutate("open")}
-              className="rounded-lg bg-green-600 px-3 py-2 text-sm font-medium text-white hover:bg-green-700"
+              className="min-h-10 rounded-xl bg-green-600 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-green-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-500 focus-visible:ring-offset-2"
             >
               {t("jobs.detail.publish")}
             </button>
@@ -468,13 +470,13 @@ export function JobDetailPage() {
             <>
               <button
                 onClick={() => statusMutation.mutate("paused")}
-                className="rounded-lg bg-yellow-600 px-3 py-2 text-sm font-medium text-white hover:bg-yellow-700"
+                className="min-h-10 rounded-xl bg-yellow-600 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-yellow-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow-500 focus-visible:ring-offset-2"
               >
                 {t("jobs.detail.pause")}
               </button>
               <button
                 onClick={handleClose}
-                className="rounded-lg bg-red-600 px-3 py-2 text-sm font-medium text-white hover:bg-red-700"
+                className="min-h-10 rounded-xl bg-red-600 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2"
               >
                 {t("jobs.detail.close")}
               </button>
@@ -484,55 +486,63 @@ export function JobDetailPage() {
             <>
               <button
                 onClick={() => statusMutation.mutate("open")}
-                className="rounded-lg bg-green-600 px-3 py-2 text-sm font-medium text-white hover:bg-green-700"
+                className="min-h-10 rounded-xl bg-green-600 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-green-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-500 focus-visible:ring-offset-2"
               >
                 {t("jobs.detail.resume")}
               </button>
               <button
                 onClick={handleClose}
-                className="rounded-lg bg-red-600 px-3 py-2 text-sm font-medium text-white hover:bg-red-700"
+                className="min-h-10 rounded-xl bg-red-600 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2"
               >
                 {t("jobs.detail.close")}
               </button>
             </>
           )}
           <Link
+            to={`/jobs/${job.id}/workflow`}
+            className="inline-flex min-h-10 items-center gap-1.5 rounded-xl border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+          >
+            <Users className="h-4 w-4" />
+            {t("jobs.detail.workflowBoard")}
+          </Link>
+          <Link
             to={`/jobs/${job.id}/edit`}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            className="inline-flex min-h-10 items-center gap-1.5 rounded-xl border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
           >
             <Edit className="h-4 w-4" />
             {t("jobs.detail.edit")}
           </Link>
           <button
             onClick={() => setShowDeleteConfirm(true)}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-red-300 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50"
+            className="inline-flex min-h-10 items-center gap-1.5 rounded-xl border border-red-300 px-3 py-2 text-sm font-semibold text-red-700 transition-colors hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
           >
             <Trash2 className="h-4 w-4" />
             {t("jobs.detail.delete")}
           </button>
         </div>
       </div>
+      </section>
 
       {/* Job details card */}
-      <div className="rounded-lg border border-gray-200 bg-white p-6 space-y-4">
-        <div>
-          <h2 className="text-sm font-medium text-gray-500 uppercase tracking-wider">{t("jobs.detail.description")}</h2>
+      <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm sm:p-7">
+        <div className="border-b border-gray-100 pb-6">
+          <h2 className="text-lg font-bold text-gray-900">{t("jobs.detail.description")}</h2>
           <div
-            className="rte-content mt-2 text-gray-700"
+            className="rte-content mt-3 max-w-none text-sm leading-7 text-gray-700 sm:text-base"
             dangerouslySetInnerHTML={{ __html: sanitizeHtml(job.description || "") }}
           />
         </div>
         {job.requirements && (
-          <div>
-            <h2 className="text-sm font-medium text-gray-500 uppercase tracking-wider">{t("jobs.detail.requirements")}</h2>
+          <div className="border-b border-gray-100 py-6">
+            <h2 className="text-lg font-bold text-gray-900">{t("jobs.detail.requirements")}</h2>
             <div
-              className="rte-content mt-2 text-gray-700"
+              className="rte-content mt-3 max-w-none text-sm leading-7 text-gray-700 sm:text-base"
               dangerouslySetInnerHTML={{ __html: sanitizeHtml(job.requirements || "") }}
             />
           </div>
         )}
         {skills.length > 0 && (
-          <div>
+          <div className="border-b border-gray-100 py-6">
             <h2 className="text-sm font-medium text-gray-500 uppercase tracking-wider">{t("jobs.detail.skills")}</h2>
             <div className="mt-2 flex flex-wrap gap-2">
               {skills.map((skill: string) => (
@@ -547,19 +557,19 @@ export function JobDetailPage() {
           </div>
         )}
         {(job.experience_min !== null || job.experience_max !== null) && (
-          <div>
+          <div className="border-b border-gray-100 py-6">
             <h2 className="text-sm font-medium text-gray-500 uppercase tracking-wider">{t("jobs.detail.experience")}</h2>
             <p className="mt-2 text-gray-700">
               {t("jobs.detail.experienceRange", { min: job.experience_min ?? 0, max: job.experience_max ?? t("jobs.detail.experienceAny") })}
             </p>
           </div>
         )}
-        <div className="flex gap-6 text-sm text-gray-500">
+        <div className="flex flex-wrap gap-x-6 gap-y-2 pt-5 text-sm text-gray-500">
           <span>{t("jobs.detail.createdOn", { date: formatDate(job.created_at) })}</span>
           {job.published_at && <span>{t("jobs.detail.publishedOn", { date: formatDate(job.published_at) })}</span>}
           {job.closes_at && <span>{t("jobs.detail.closesOn", { date: formatDate(job.closes_at) })}</span>}
         </div>
-      </div>
+      </section>
 
       {/* Job boards — publishing status per board */}
       {id && <JobBoardsCard jobId={id} />}
@@ -569,7 +579,7 @@ export function JobDetailPage() {
 
       {/* Kanban Pipeline */}
       <div>
-        <div className="flex items-center justify-between mb-4">
+        <div className="mb-4 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <h2 className="text-lg font-semibold text-gray-900">
               {t("jobs.detail.pipelineTitle", { count: applications.length })}
@@ -579,7 +589,7 @@ export function JobDetailPage() {
             )}
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <button
               onClick={() => setShowAddCandidate(true)}
               className="inline-flex items-center gap-1.5 rounded-lg border border-brand-300 px-3 py-2 text-sm font-medium text-brand-700 hover:bg-brand-50"
@@ -797,8 +807,8 @@ export function JobDetailPage() {
                 {rankings.length > 0 && (
                   <ExportButtons
                     baseName="job-rankings"
-                    title="AI Score Rankings"
-                    subtitle={job?.title ? `Job: ${job.title}` : undefined}
+                    title={t("jobs.detail.aiScoreRankings")}
+                    subtitle={job?.title}
                     columns={RANKING_COLUMNS}
                     fetchRows={() => rankings}
                   />
@@ -993,6 +1003,7 @@ function AddCandidateModal({
   onClose: () => void;
   onAdded: () => void;
 }) {
+  const { t } = useTranslation();
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
 
@@ -1016,13 +1027,13 @@ function AddCandidateModal({
       apiPost("/applications", { job_id: jobId, candidate_id: candidateId, source: "direct" }),
     onSuccess: (_res, candidateId) => {
       const c = candidates.find((x) => x.id === candidateId);
-      toast.success(`${c ? `${c.first_name} ${c.last_name}` : "Candidate"} added to this job`);
+      toast.success(t("jobs.detail.candidateAdded", { name: c ? `${c.first_name} ${c.last_name}` : t("candidates.singular") }));
       onAdded();
     },
     onError: (err: any) =>
       toast.error(
         err?.response?.data?.error?.message ||
-          "Couldn't add the candidate — they may already be on this job.",
+          t("jobs.detail.addCandidateError"),
       ),
   });
 
@@ -1033,13 +1044,13 @@ function AddCandidateModal({
     >
       <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
         <div className="mb-4 flex items-center justify-between">
-          <h3 className="text-lg font-semibold text-gray-900">Add a Candidate</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600" aria-label="Close">
+          <h3 className="text-lg font-semibold text-gray-900">{t("jobs.detail.addCandidateModalTitle")}</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600" aria-label={t("common.close")}>
             <X className="h-5 w-5" />
           </button>
         </div>
 
-        <p className="mb-3 text-sm text-gray-500">Add an existing candidate to this job, or create a new one.</p>
+        <p className="mb-3 text-sm text-gray-500">{t("jobs.detail.addCandidateModalDescription")}</p>
 
         <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
@@ -1048,7 +1059,7 @@ function AddCandidateModal({
             type="text"
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
-            placeholder="Search candidates by name, email, or company…"
+            placeholder={t("jobs.detail.searchCandidatesPlaceholder")}
             className="w-full rounded-lg border border-gray-300 py-2 pl-9 pr-3 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
           />
         </div>
@@ -1060,7 +1071,7 @@ function AddCandidateModal({
             </div>
           ) : candidates.length === 0 ? (
             <p className="px-4 py-6 text-center text-sm text-gray-400">
-              {search ? "No matching candidates." : "No available candidates to add."}
+              {search ? t("jobs.detail.noMatchingCandidates") : t("jobs.detail.noAvailableCandidates")}
             </p>
           ) : (
             candidates.map((c) => (
@@ -1091,13 +1102,13 @@ function AddCandidateModal({
             to={`/candidates/new?job_id=${jobId}`}
             className="inline-flex items-center gap-1 text-sm font-medium text-brand-600 hover:text-brand-700"
           >
-            <Plus className="h-4 w-4" /> Create a new candidate
+            <Plus className="h-4 w-4" /> {t("jobs.detail.createNewCandidate")}
           </Link>
           <button
             onClick={onClose}
             className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
           >
-            Done
+            {t("common.done")}
           </button>
         </div>
       </div>

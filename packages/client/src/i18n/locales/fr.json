@@ -20,7 +20,20 @@
     "applications": "Candidatures",
     "aiInterviews": "Entretiens IA",
     "logoutConfirmTitle": "Se déconnecter ?",
-    "logoutConfirmMessage": "Vous devrez vous reconnecter pour accéder à votre compte."
+    "logoutConfirmMessage": "Vous devrez vous reconnecter pour accéder à votre compte.",
+    "groups": {
+      "overview": "Overview",
+      "jobs": "Jobs",
+      "people": "People",
+      "interviews": "Interviews",
+      "hiring": "Hiring",
+      "system": "System"
+    },
+    "myApprovals": "Mes approbations",
+    "badges": {
+      "beta": "Beta",
+      "new": "New"
+    }
   },
   "common": {
     "save": "Enregistrer",
@@ -54,7 +67,16 @@
     "optional": "Facultatif",
     "select": "Sélectionner",
     "copy": "Copier",
-    "copied": "Copié"
+    "copied": "Copié",
+    "export": "Exporter",
+    "exportCsv": "Exporter au format CSV",
+    "exportPdf": "Exporter au format PDF",
+    "switchLightMode": "Passer au mode clair",
+    "switchDarkMode": "Passer au mode sombre",
+    "done": "Termin?",
+    "nothingToExport": "Rien ? exporter.",
+    "exportFailed": "?chec de l?exportation. R?essayez.",
+    "at": "chez"
   },
   "candidates": {
     "list": {
@@ -166,7 +188,8 @@
       "cancel": "Annuler",
       "saveChanges": "Enregistrer les modifications",
       "source_one": "Autre",
-      "source_many": "Autre"
+      "source_many": "Autre",
+      "expYearsMax": "Experience (years) can't exceed 50"
     },
     "compare": {
       "stageUpdated": "Étape mise à jour",
@@ -200,7 +223,8 @@
       "recommendation_yes": "Oui",
       "recommendation_maybe": "Peut-être",
       "recommendation_no": "Non"
-    }
+    },
+    "singular": "Candidat"
   },
   "careers": {
     "list": {
@@ -284,7 +308,16 @@
       "monthsLabel": "Mois",
       "errorMonthsRange": "Les mois doivent être compris entre 0 et 11",
       "skillsLabel": "Compétences (séparées par des virgules)",
-      "skillsPlaceholder": "React, Python, SQL"
+      "skillsPlaceholder": "React, Python, SQL",
+      "errorYearsMax": "Years of experience can't exceed {{max}}.",
+      "errorSalaryMax": "Please enter a realistic expected salary.",
+      "screeningTitle": "Questions de présélection",
+      "screeningSelect": "Sélectionner…",
+      "screeningRequired": "Cette question est obligatoire",
+      "screeningRequiredToast": "Veuillez répondre à toutes les questions de présélection obligatoires.",
+      "screeningLoadError": "Impossible de charger le formulaire de candidature. Veuillez réessayer.",
+      "retry": "Réessayer",
+      "countryCodeLabel": "Indicatif du pays"
     },
     "success": {
       "title": "Merci pour votre candidature !",
@@ -313,7 +346,9 @@
     "passwordLabel": "Mot de passe",
     "signingIn": "Connexion en cours...",
     "signIn": "Se connecter",
-    "ecosystemNote": "Fait partie de l'écosystème EMP HRMS"
+    "ecosystemNote": "Fait partie de l'écosystème EMP HRMS",
+    "ssoFailed": "?chec de la connexion SSO. Essayez de vous connecter manuellement.",
+    "goToLogin": "Acc?der ? la connexion"
   },
   "analytics": {
     "offerAccepted": "Acceptée",
@@ -444,7 +479,42 @@
       "withdrawn": "Retiré"
     },
     "count_many": "{{count}} candidatures",
-    "countMatch_many": "{{count}} candidatures correspondent à vos filtres"
+    "countMatch_many": "{{count}} candidatures correspondent à vos filtres",
+    "stage": {
+      "applied": "Postulé",
+      "screened": "Présélectionné",
+      "interview": "Entretien",
+      "offer": "Offre",
+      "hired": "Embauché",
+      "rejected": "Rejeté",
+      "withdrawn": "Retiré"
+    },
+    "detail": {
+      "back": "Retour",
+      "notFound": "Candidature introuvable.",
+      "viewCandidate": "Voir le candidat",
+      "stage": "Étape",
+      "ownership": "Responsabilité et SLA",
+      "assignee": "Recruteur responsable",
+      "unassigned": "Non attribué",
+      "slaDate": "Date d'échéance SLA",
+      "save": "Enregistrer",
+      "screeningAnswers": "Réponses de présélection",
+      "knockoutFailed": "échec éliminatoire",
+      "activity": "Activité",
+      "noActivity": "Aucune activité pour le moment.",
+      "assignmentSaved": "Attribution mise à jour.",
+      "assignmentFailed": "Impossible de mettre à jour l'attribution.",
+      "stageMoved": "Étape mise à jour.",
+      "stageFailed": "Impossible de changer l'étape."
+    },
+    "bulk": {
+      "selected": "{{count}} sélectionné(s)",
+      "moveTo": "Déplacer vers…",
+      "moved": "{{count}} candidature(s) déplacée(s).",
+      "moveFailed": "Impossible de déplacer les candidatures sélectionnées.",
+      "clear": "Effacer"
+    }
   },
   "components": {
     "portalLayout": {
@@ -586,6 +656,87 @@
       "previewReady_many": "Aperçu — {{valid}} sur {{count}} lignes prêtes",
       "importingCount_many": "Import de {{count}} candidats…",
       "importBtn_many": "Importer {{count}} candidats"
+    },
+    "bulkImportJobs": {
+      "ariaLabel": "Bulk import jobs",
+      "title": "Bulk Import Jobs",
+      "close": "Close",
+      "errFileEmpty": "The file is empty.",
+      "errMissingColumns": "The Excel file must include title and description columns. Download the template for the expected format.",
+      "errReadFailed": "Could not read that file. Please upload an .xlsx file (use the template).",
+      "errMissingTitle": "Missing title",
+      "errTitleMarkup": "Title cannot contain the characters < or >",
+      "errDescriptionShort": "Description must be at least 10 characters",
+      "errBadNumber": "Experience and salary must be whole, non-negative numbers",
+      "errExpRange": "Min experience cannot be greater than max experience",
+      "errSalaryRange": "Min salary cannot be greater than max salary",
+      "resultCreated_one": "{{count}} job created as a draft",
+      "resultCreated_other": "{{count}} jobs created as drafts",
+      "failedCount": "{{count}} could not be imported",
+      "failedRows": "Failed rows",
+      "rowLabel": "Row {{row}}",
+      "columnsPrefix": "Upload an Excel file (.xlsx) with columns",
+      "columnsSuffix": "(required) plus optional department, location, employment_type, experience_min/max, salary_min/max, salary_currency, remote_policy and skills. Department, location, employment type, currency and remote policy are dropdowns in the template.",
+      "template": "Template",
+      "changeFile": "Click to choose a different file",
+      "selectFile": "Click to select a CSV file",
+      "fileHint": ".xlsx, up to 200 rows",
+      "previewReady_one": "Preview — {{valid}} of {{count}} row ready",
+      "previewReady_other": "Preview — {{valid}} of {{count}} rows ready",
+      "rowsSkipped": "{{count}} row(s) will be skipped",
+      "colTitle": "Title",
+      "colDepartment": "Department",
+      "colType": "Type",
+      "colStatus": "Status",
+      "ready": "Ready",
+      "importingCount_one": "Importing {{count}} job…",
+      "importingCount_other": "Importing {{count}} jobs…",
+      "done": "Done",
+      "cancel": "Cancel",
+      "importBtn_one": "Import {{count}} job",
+      "importBtn_other": "Import {{count}} jobs",
+      "unknownError": "Unknown error"
+    },
+    "bulkUpdateJobs": {
+      "ariaLabel": "Bulk update jobs",
+      "title": "Bulk Update Jobs",
+      "close": "Close",
+      "instructions": "Download your current jobs as an Excel file, edit any fields (department, location, employment type, remote policy and status are dropdowns; keep the id column), and re-upload. Empty cells are left unchanged.",
+      "currentJobs": "Current jobs",
+      "errFileEmpty": "The file is empty.",
+      "errMissingId": "The Excel file must include an id column. Download your current jobs for the expected format.",
+      "errReadFailed": "Could not read that file. Please upload the downloaded .xlsx template.",
+      "errBadId": "Invalid job id",
+      "errTitleMarkup": "Title cannot contain the characters < or >",
+      "errDescriptionShort": "Description must be at least 10 characters",
+      "errBadNumber": "Experience and salary must be whole, non-negative numbers",
+      "errExpRange": "Min experience cannot be greater than max experience",
+      "errSalaryRange": "Min salary cannot be greater than max salary",
+      "errBadStatus": "Status must be one of draft, open, paused, closed, filled",
+      "errNoChanges": "No fields to update",
+      "resultUpdated_one": "{{count}} job updated",
+      "resultUpdated_other": "{{count}} jobs updated",
+      "failedCount": "{{count}} could not be updated",
+      "failedRows": "Failed rows",
+      "rowLabel": "Row {{row}}",
+      "changeFile": "Click to choose a different file",
+      "selectFile": "Click to select a CSV file",
+      "fileHint": ".xlsx, up to 200 rows",
+      "previewReady_one": "Preview — {{valid}} of {{count}} row ready",
+      "previewReady_other": "Preview — {{valid}} of {{count}} rows ready",
+      "rowsSkipped": "{{count}} row(s) will be skipped",
+      "colId": "ID",
+      "colTitle": "Title",
+      "colStatus": "Status",
+      "colResult": "Result",
+      "ready": "Ready",
+      "updatingCount_one": "Updating {{count}} job…",
+      "updatingCount_other": "Updating {{count}} jobs…",
+      "done": "Done",
+      "cancel": "Cancel",
+      "updateBtn_one": "Update {{count}} job",
+      "updateBtn_other": "Update {{count}} jobs",
+      "unknownError": "Unknown error"
     }
   },
   "dashboard": {
@@ -599,7 +750,8 @@
       "myReferrals": "Mes cooptations",
       "inReview": "En cours d'examen",
       "hired": "Embauchés",
-      "bonus": "Prime"
+      "bonus": "Prime",
+      "closedJobs": "Closed Jobs"
     },
     "pipelineDistribution": "Répartition du pipeline",
     "totalCount": "{{count}} au total",
@@ -662,7 +814,27 @@
       "timeToHireBetter": "Votre délai de recrutement s'est amélioré de {{pct}} % par rapport au mois dernier.",
       "timeToHireWorse": "Votre délai de recrutement est {{pct}} % plus long que le mois dernier.",
       "pendingOffers_one": "{{count}} offre est en attente. Pensez à envoyer une relance.",
-      "pendingOffers_other": "{{count}} offres sont en attente. Pensez à envoyer une relance."
+      "pendingOffers_other": "{{count}} offres sont en attente. Pensez à envoyer une relance.",
+      "subtitle": "Smart signals from your hiring activity",
+      "emptyTitle": "Insights are gathering",
+      "emptyDescription": "Insights will appear as your recruiting activity grows."
+    },
+    "upcomingInterviews": "Upcoming Interviews",
+    "noUpcomingInterviews": "Your calendar is clear. Schedule an interview when you are ready to meet the next great candidate.",
+    "interviewsEmptyTitle": "Nothing on the calendar",
+    "interviewMinutes": "{{count}} min",
+    "actionCenter": {
+      "title": "Action Center",
+      "awaitingScreening_one": "{{count}} candidate awaiting screening",
+      "awaitingScreening_other": "{{count}} candidates awaiting screening",
+      "screeningDescription": "Review and move candidates forward.",
+      "interviewsToday_one": "{{count}} interview today",
+      "interviewsToday_other": "{{count}} interviews today",
+      "interviewsDescription": "View today's interview schedule.",
+      "offersNeedApproval_one": "{{count}} offer needs approval",
+      "offersNeedApproval_other": "{{count}} offers need approval",
+      "offersDescription": "Review and approve pending offers.",
+      "viewAll": "View all tasks"
     }
   },
   "interviews": {
@@ -728,7 +900,10 @@
       "meetingLinkLabel": "Lien de réunion",
       "notesLabel": "Notes",
       "notesPlaceholder": "Notes complémentaires pour l'entretien...",
-      "cancel": "Annuler"
+      "cancel": "Annuler",
+      "subtitle": "Set up an interview for a candidate's application.",
+      "noApplicationsTitle": "No applications found",
+      "loadingApplications": "Chargement des candidatures?"
     },
     "feedback": {
       "recStrongYes": "Oui, fortement",
@@ -919,7 +1094,9 @@
       "onsite": "Sur site",
       "internal": "Interne",
       "public": "Publique",
-      "totalCount_many": "{{count}} offres au total"
+      "totalCount_many": "{{count}} offres au total",
+      "bulkImport": "Bulk Import",
+      "bulkUpdate": "Bulk Update"
     },
     "detail": {
       "statusUpdated": "Statut de l'offre mis à jour",
@@ -1009,7 +1186,16 @@
         "indeed": "Actif. Indeed explore le flux XML public des offres de cette organisation (annonces organiques gratuites). Soumettez l'URL du flux à Indeed une seule fois, puis les offres publiées apparaissent automatiquement.",
         "naukri": "Nécessite un abonnement employeur/RMS Naukri + une clé API employeur. Pas encore connecté.",
         "apna": "Nécessite un compte entreprise Apna + un accès à l'API employeur. Pas encore connecté."
-      }
+      },
+      "workflowBoard": "Workflow",
+      "candidateAdded": "{{name}} a ?t? ajout? ? ce poste",
+      "addCandidateError": "Impossible d?ajouter le candidat : il est peut-?tre d?j? associ? ? ce poste.",
+      "addCandidateModalTitle": "Ajouter un candidat",
+      "addCandidateModalDescription": "Ajoutez un candidat existant ? ce poste ou cr?ez-en un nouveau.",
+      "searchCandidatesPlaceholder": "Rechercher par nom, e-mail ou entreprise?",
+      "noMatchingCandidates": "Aucun candidat correspondant.",
+      "noAvailableCandidates": "Aucun candidat disponible ? ajouter.",
+      "createNewCandidate": "Cr?er un nouveau candidat"
     },
     "form": {
       "employmentType": {
@@ -1076,11 +1262,58 @@
       "cancel": "Annuler",
       "updateJob": "Mettre à jour l'offre",
       "saveDraft": "Enregistrer comme brouillon",
-      "draftHint": "Les offres enregistrées démarrent en brouillon. Ouvrez l'offre et cliquez sur Publier pour l'afficher sur votre page carrière."
+      "draftHint": "Les offres enregistrées démarrent en brouillon. Ouvrez l'offre et cliquez sur Publier pour l'afficher sur votre page carrière.",
+      "generateWithAi": "Générer avec l'IA",
+      "seniorityLabel": "Séniorité",
+      "seniority": {
+        "intern": "Stagiaire",
+        "junior": "Junior",
+        "mid": "Intermédiaire",
+        "senior": "Senior",
+        "lead": "Lead",
+        "director": "Directeur",
+        "vp": "VP",
+        "cLevel": "Cadre dirigeant"
+      },
+      "niceToHave": "Atouts",
+      "aiGenerated": "Généré par IA. Vérifiez et modifiez au besoin.",
+      "aiGeneratedTemplate": "Généré à partir d'un modèle (aucun fournisseur d'IA configuré). Vérifiez et modifiez.",
+      "aiGenerateFailed": "Impossible de générer la description. Veuillez réessayer.",
+      "aiNeedsTitleSkills": "Ajoutez d'abord un intitulé de poste et au moins une compétence.",
+      "suggestedSkills": "Compétences suggérées — cliquez pour ajouter"
     },
     "pipeline": {
       "title": "Pipeline de recrutement",
       "subtitle": "Vue tableau Kanban des candidats par étape."
+    },
+    "workflow": {
+      "title": "Tableau de workflow",
+      "backToJob": "Retour à l'offre",
+      "pipeline": "Pipeline",
+      "hiringTeam": "Équipe de recrutement",
+      "addMember": "Ajouter",
+      "selectUser": "Sélectionner un utilisateur…",
+      "noMembers": "Personne ne fait encore partie de l'équipe de recrutement.",
+      "remove": "Retirer",
+      "memberAdded": "Membre de l'équipe ajouté.",
+      "memberRemoved": "Membre de l'équipe retiré.",
+      "memberFailed": "Impossible de mettre à jour l'équipe de recrutement.",
+      "tasks": "Tâches",
+      "addTask": "Ajouter",
+      "taskTitlePlaceholder": "Ajouter une tâche…",
+      "noTasks": "Aucune tâche pour le moment.",
+      "unassigned": "Non attribué",
+      "delete": "Supprimer",
+      "toggleDone": "Basculer l'état terminé",
+      "taskAdded": "Tâche ajoutée.",
+      "taskDeleted": "Tâche supprimée.",
+      "taskFailed": "Impossible de mettre à jour la tâche.",
+      "roles": {
+        "recruiter": "Recruteur",
+        "hiring_manager": "Responsable du recrutement",
+        "interviewer": "Intervieweur",
+        "coordinator": "Coordinateur"
+      }
     }
   },
   "offers": {
@@ -1196,7 +1429,8 @@
       "loadingUsers": "Chargement des utilisateurs...",
       "cancel": "Annuler",
       "submitting": "Envoi en cours...",
-      "submit": "Envoyer"
+      "submit": "Envoyer",
+      "manageTemplates": "Manage / edit templates"
     },
     "form": {
       "toastCreated": "Offre créée avec succès",
@@ -1251,7 +1485,8 @@
       "jobTitleShort": "Intitulé du poste",
       "expiryDate": "Date d'expiration",
       "notes": "Notes",
-      "saveChanges": "Enregistrer les modifications"
+      "saveChanges": "Enregistrer les modifications",
+      "errExpiryBeforeJoining": "Offer expiry date must be on or after the joining date"
     },
     "template": {
       "toastUpdated": "Modèle mis à jour",
@@ -1285,6 +1520,17 @@
       "delete": "Supprimer",
       "deleteConfirmTitle": "Supprimer ce modèle ?",
       "deleteConfirmMessage": "Cette action supprime le modèle afin qu'il ne puisse plus être utilisé pour de nouvelles lettres d'offre. Les lettres déjà générées à partir de celui-ci sont conservées."
+    },
+    "approvals": {
+      "title": "Mes approbations",
+      "subtitle": "Offres en attente de votre approbation",
+      "empty": "Vous n'avez aucune offre en attente d'approbation.",
+      "submitted": "Soumise le {{date}}",
+      "approve": "Approuver",
+      "reject": "Rejeter",
+      "approved": "Offre approuvée",
+      "rejected": "Offre rejetée",
+      "actionFailed": "Impossible de mettre à jour l'offre"
     }
   },
   "onboarding": {
@@ -1375,7 +1621,11 @@
       "assigneeRolePlaceholder": "ex. hr_admin",
       "requiredTask": "Tâche obligatoire",
       "addTask": "Ajouter une tâche",
-      "taskCount_many": "{{count}} tâches"
+      "taskCount_many": "{{count}} tâches",
+      "createFailed": "?chec de la cr?ation du mod?le",
+      "updateFailed": "?chec de la mise ? jour du mod?le",
+      "addTaskFailed": "?chec de l?ajout de la t?che",
+      "updateTaskFailed": "?chec de la mise ? jour de la t?che"
     }
   },
   "scoring": {
@@ -1433,7 +1683,14 @@
       "strongMatchDesc": "Ce candidat correspond parfaitement au poste.",
       "goodMatchDesc": "Ce candidat correspond bien et remplit la plupart des prérequis.",
       "partialMatchDesc": "Ce candidat remplit certains prérequis mais présente des lacunes.",
-      "weakMatchDesc": "Ce candidat ne remplit pas la plupart des prérequis."
+      "weakMatchDesc": "Ce candidat ne remplit pas la plupart des prérequis.",
+      "noRequiredSkills": "Skills not assessed — this job has no required skills configured, so the score can't measure skill fit. Add required skills to the job for a meaningful match, or configure an AI provider for content-based scoring.",
+      "retryAiScoring": "Retry AI scoring",
+      "retrySuccess": "Re-scored the candidate.",
+      "retryFailed": "Could not re-score. Please try again.",
+      "methodAi": "AI evaluation · {{model}}",
+      "methodHeuristic": "Rule-based score (no AI provider configured)",
+      "reviewDisclaimer": "AI-generated scores are guidance only — always review before making hiring decisions."
     }
   },
   "portal": {
@@ -1600,7 +1857,10 @@
       "questions": "Questions",
       "transcript": "Transcription",
       "questionNumber": "Q{{num}}.",
-      "noAnswer": "Aucune réponse"
+      "noAnswer": "Aucune réponse",
+      "methodAi": "AI evaluation · {{model}}",
+      "methodCompletion": "Completion score only — this reflects how fully the questions were answered, not answer correctness or quality. It is not an AI content assessment; configure an AI provider for a real evaluation.",
+      "completionScoreLabel": "Completion score"
     },
     "session": {
       "leaveConfirm": "Quitter l'entretien ? Vous ne pourrez pas le reprendre.",
@@ -1647,7 +1907,13 @@
       "voiceTitle": "Entretien vocal IA",
       "voiceIntroBody": "Bonjour {{name}}. Vous aurez une courte conversation à l'oral avec notre recruteur IA — il pose des questions et vous répondez à voix haute, comme lors d'un véritable entretien. Veuillez autoriser l'accès au microphone lorsque cela vous est demandé.",
       "connecting": "Connexion…",
-      "startVoiceInterview": "Commencer l'entretien vocal"
+      "startVoiceInterview": "Commencer l'entretien vocal",
+      "tapToAnswer": "Tap to answer now",
+      "noSpeechDetected": "Nous n'avons pas capté de réponse. Parlez maintenant et elle apparaîtra ici — ou appuyez à nouveau sur Suivant pour passer cette question.",
+      "typeAnswer": "Saisir plutôt",
+      "useVoice": "Utiliser la voix",
+      "typeAnswerPlaceholder": "Saisissez votre réponse ici…",
+      "audioRecordingNotice": "Votre audio sera enregistr? et partag? avec l??quipe de recrutement."
     }
   },
   "settings": {
@@ -1859,5 +2125,29 @@
     "title": "Page introuvable",
     "subtitle": "La page que vous recherchez n'existe pas ou a été déplacée.",
     "backHome": "Retour au tableau de bord"
+  },
+  "screening": {
+    "type": {
+      "text": "Texte court",
+      "number": "Nombre",
+      "yes_no": "Oui / Non",
+      "single_choice": "Choix unique"
+    },
+    "editor": {
+      "title": "Questions de présélection",
+      "subtitle": "Posez des questions propres au poste dans le formulaire de candidature. Marquez une question comme éliminatoire pour rejeter automatiquement les candidats qui donnent la réponse disqualifiante.",
+      "empty": "Aucune question de présélection pour le moment.",
+      "questionPlaceholder": "ex. Combien d'années d'expérience avez-vous avec Selenium ?",
+      "remove": "Supprimer la question",
+      "required": "Obligatoire",
+      "knockout": "Éliminatoire",
+      "optionsPlaceholder": "Choix séparés par des virgules, ex. Oui, Non, Peut-être",
+      "knockoutValue": "Réponse disqualifiante",
+      "knockoutValuePlaceholder": "Réponse entraînant un rejet automatique, ex. Non",
+      "addQuestion": "Ajouter une question",
+      "save": "Enregistrer les questions",
+      "saved": "Questions de présélection enregistrées.",
+      "saveFailed": "Impossible d'enregistrer les questions de présélection."
+    }
   }
 }

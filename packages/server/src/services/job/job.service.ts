@@ -243,54 +243,19 @@ export async function updateJob(
   return db.update<JobPosting>("job_postings", id, updates);
 }
 
-export async function listJobs(
-  orgId: number,
-  params: {
-    page?: number;
-    perPage?: number;
-    status?: string;
-    search?: string;
-    department?: string;
-    location?: string;
-    employment_type?: string;
-    sort?: string;
-    order?: "asc" | "desc";
-  },
-): Promise<{ data: JobPosting[]; total: number; page: number; perPage: number }> {
-  const db = getDB();
-  const page = params.page ?? 1;
-  const perPage = params.perPage ?? 20;
-  const offset = (page - 1) * perPage;
-  const where = ["organization_id = ?"];
-  const args: any[] = [orgId];
-
-  if (params.status) { where.push("status = ?"); args.push(params.status); }
-  if (params.department) { where.push("department = ?"); args.push(params.department); }
-  if (params.location) { where.push("location = ?"); args.push(params.location); }
-  if (params.employment_type) { where.push("employment_type = ?"); args.push(params.employment_type); }
-  if (params.search?.trim()) {
-    const search = `%${params.search.trim()}%`;
-    where.push("(title LIKE ? OR department LIKE ? OR location LIKE ?)");
-    args.push(search, search, search);
-  }
-
-  const { column, direction } = safeOrderBy(
-    params.sort,
-    params.order,
-    ["created_at", "updated_at", "title", "department", "location", "status"],
-    "created_at",
-  );
-  const whereSql = where.join(" AND ");
-  const countRows = await db.raw<any[][]>(
-    `SELECT COUNT(*) AS total FROM job_postings WHERE ${whereSql}`,
-    args,
-  );
-  const total = Number(countRows[0]?.[0]?.total ?? 0);
-  const dataRows = await db.raw<any[][]>(
-    `SELECT * FROM job_postings WHERE ${whereSql} ORDER BY \`${column}\` ${direction} LIMIT ? OFFSET ?`,
-    [...args, perPage, offset],
-  );
-  return { data: dataRows[0] as JobPosting[], total, page, perPage };
+export async function listJobs(orgId: number, params: { page?: number; perPage?: number; status?: string; search?: string; department?: string; location?: string; employment_type?: string; sort?: string; order?: "asc" | "desc" }): Promise<{ data: JobPosting[]; total: number; page: number; perPage: number }> {
+  const db = getDB(); const page = params.page ?? 1; const perPage = params.perPage ?? 20; const offset = (page - 1) * perPage;
+  const { column, direction } = safeOrderBy(params.sort, params.order, ["created_at","updated_at","title","department","location","status"], "created_at");
+  const clauses = ["organization_id = ?"]; const args: any[] = [orgId];
+  if (params.search?.trim()) { const q = `%${params.search.trim()}%`; clauses.push("(title LIKE ? OR department LIKE ? OR location LIKE ?)"); args.push(q,q,q); }
+  if (params.status?.trim()) { clauses.push("LOWER(TRIM(status)) = ?"); args.push(params.status.trim().toLowerCase()); }
+  if (params.department) { clauses.push("department = ?"); args.push(params.department); }
+  if (params.location) { clauses.push("location = ?"); args.push(params.location); }
+  if (params.employment_type) { clauses.push("employment_type = ?"); args.push(params.employment_type); }
+  const where = clauses.join(" AND ");
+  const countRows = await db.raw<any[][]>(`SELECT COUNT(*) AS total FROM job_postings WHERE ${where}`, args);
+  const dataRows = await db.raw<any[][]>(`SELECT * FROM job_postings WHERE ${where} ORDER BY \`${column}\` ${direction} LIMIT ? OFFSET ?`, [...args, perPage, offset]);
+  return { data: dataRows[0] as JobPosting[], total: Number(countRows[0]?.[0]?.total ?? 0), page, perPage };
 }
 export async function getJob(orgId: number, id: string): Promise<JobPosting> {
   const db = getDB();

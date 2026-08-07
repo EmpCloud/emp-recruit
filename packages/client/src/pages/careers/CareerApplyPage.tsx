@@ -15,10 +15,36 @@ import type { JobPosting } from "@emp-recruit/shared";
 
 const PUBLIC_API = "/api/v1/public";
 
+interface PublicScreeningQuestion {
+  id: string;
+  question: string;
+  type: "text" | "number" | "yes_no" | "single_choice";
+  options: string[] | null;
+  required: boolean;
+}
+interface PublicCustomField { id: string; field_key: string; label: string; field_type: string; options: string[] | null; required: boolean; condition_field_key?: string | null; condition_value?: string | null; }
+
 // Upper bounds for the optional numeric fields (BUG-10). Negatives were already
 // rejected; these cap unrealistic values like 999 years / 999,999,999 salary.
 const MAX_EXPERIENCE_YEARS = 50;
 const MAX_EXPECTED_SALARY = 100_000_000;
+const REQUIRED_PHONE_DIGITS = 10;
+const COUNTRY_CODES = [
+  { code: "+91", label: "🇮🇳 +91" },
+  { code: "+1", label: "🇺🇸 +1" },
+  { code: "+44", label: "🇬🇧 +44" },
+  { code: "+971", label: "🇦🇪 +971" },
+  { code: "+61", label: "🇦🇺 +61" },
+  { code: "+65", label: "🇸🇬 +65" },
+  { code: "+49", label: "🇩🇪 +49" },
+  { code: "+33", label: "🇫🇷 +33" },
+  { code: "+34", label: "🇪🇸 +34" },
+  { code: "+351", label: "🇵🇹 +351" },
+  { code: "+62", label: "🇮🇩 +62" },
+  { code: "+81", label: "🇯🇵 +81" },
+  { code: "+86", label: "🇨🇳 +86" },
+  { code: "+966", label: "🇸🇦 +966" },
+] as const;
 
 export function CareerApplyPage() {
   const { t } = useTranslation();
@@ -29,6 +55,7 @@ export function CareerApplyPage() {
     first_name: "",
     last_name: "",
     email: "",
+    country_code: "+91",
     phone: "",
     cover_letter: "",
     current_company: "",
@@ -40,6 +67,9 @@ export function CareerApplyPage() {
   const [resume, setResume] = useState<File | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  // Answers to the job's screening questions, keyed by question id.
+  const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [customValues, setCustomValues] = useState<Record<string, string>>({});
 
   const jobQuery = useQuery({
     queryKey: ["public-job", slug, jobId],
@@ -49,6 +79,22 @@ export function CareerApplyPage() {
     },
   });
 
+  const screeningQuery = useQuery({
+    queryKey: ["public-screening", slug, jobId],
+    queryFn: async () => {
+      const { data } = await axios.get(
+        `${PUBLIC_API}/careers/${slug}/jobs/${jobId}/screening-questions`,
+      );
+      return (data.data ?? []) as PublicScreeningQuestion[];
+    },
+  });
+  const questions = screeningQuery.data ?? [];
+  const customFieldsQuery = useQuery({
+    queryKey: ["public-form-fields", slug, jobId],
+    queryFn: async () => (await axios.get(`${PUBLIC_API}/careers/${slug}/jobs/${jobId}/form-fields`)).data.data as PublicCustomField[],
+  });
+  const customFields = customFieldsQuery.data ?? [];
+
   const applyMutation = useMutation({
     mutationFn: async () => {
       const formData = new FormData();
@@ -56,7 +102,10 @@ export function CareerApplyPage() {
       formData.append("last_name", form.last_name);
       formData.append("email", form.email);
       formData.append("job_id", jobId!);
-      if (form.phone) formData.append("phone", form.phone);
+      if (form.phone) {
+        formData.append("country_code", form.country_code);
+        formData.append("phone", form.phone);
+      }
       if (form.cover_letter) formData.append("cover_letter", form.cover_letter);
       if (form.current_company) formData.append("current_company", form.current_company);
       // Fold months into the decimal years the API already accepts (same
@@ -68,6 +117,13 @@ export function CareerApplyPage() {
       }
       if (form.expected_salary) formData.append("expected_salary", form.expected_salary);
       if (form.skills.trim()) formData.append("skills", form.skills.trim());
+      if (questions.length) {
+        formData.append(
+          "screening_answers",
+          JSON.stringify(questions.map((q) => ({ question_id: q.id, answer: answers[q.id] ?? "" }))),
+        );
+      }
+      if (customFields.length) formData.append("custom_form_values", JSON.stringify(customValues));
       if (resume) formData.append("resume", resume);
 
       const { data } = await axios.post(`${PUBLIC_API}/careers/${slug}/apply`, formData, {
@@ -97,10 +153,10 @@ export function CareerApplyPage() {
     const { name, value } = e.target;
     // Clear a field's error as soon as the applicant edits it. (BUG-06)
     setErrors((prev) => (prev[name] ? { ...prev, [name]: "" } : prev));
-    // Phone: reject non-numeric input as it's typed — only digits and the usual
-    // phone punctuation (+ - ( ) space) are kept. (BUG-02)
+    // Phone: accept digits only and stop at exactly 10 digits (BUG-020).
     if (name === "phone") {
-      setForm((prev) => ({ ...prev, phone: value.replace(/[^\d+\-()\s]/g, "") }));
+      const phone = value.replace(/\D/g, "").slice(0, REQUIRED_PHONE_DIGITS);
+      setForm((prev) => ({ ...prev, phone }));
       return;
     }
     setForm((prev) => ({ ...prev, [name]: value }));
@@ -144,13 +200,11 @@ export function CareerApplyPage() {
     const next: Record<string, string> = {};
     const emailInvalid =
       form.email.trim() !== "" && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(form.email.trim());
-    // Phone is optional. The input filter already strips letters/symbols
-    // (BUG-02), so here we only reject clearly-non-phone input: something typed
-    // that contains no digits at all, or an absurdly long string. A real phone
-    // number of any reasonable length must never block submission (BUG-09).
+    // Phone is optional, but when supplied it must contain exactly 10 digits.
+    // This also protects submission state from programmatic changes (BUG-020).
     const phoneDigits = form.phone.replace(/\D/g, "");
     const phoneInvalid =
-      form.phone.trim() !== "" && (phoneDigits.length === 0 || phoneDigits.length > 20);
+      form.phone.trim() !== "" && phoneDigits.length !== REQUIRED_PHONE_DIGITS;
     const yearsNegative = form.experience_years !== "" && Number(form.experience_years) < 0;
     const yearsTooHigh =
       form.experience_years !== "" && Number(form.experience_years) > MAX_EXPERIENCE_YEARS;
@@ -173,6 +227,12 @@ export function CareerApplyPage() {
     if (monthsOutOfRange) next.experience_months = t("careers.apply.errorMonthsRange");
     if (salaryNegative) next.expected_salary = t("careers.apply.errorSalaryNegative");
     else if (salaryTooHigh) next.expected_salary = t("careers.apply.errorSalaryMax");
+    // Required screening questions must be answered.
+    const missingScreening = questions.filter((q) => q.required && (answers[q.id] ?? "").trim() === "");
+    for (const q of missingScreening) next[`screening_${q.id}`] = t("careers.apply.screeningRequired");
+    const visibleCustomFields = customFields.filter((f) => !f.condition_field_key || (customValues[f.condition_field_key] ?? "") === (f.condition_value ?? ""));
+    const missingCustom = visibleCustomFields.filter((f) => f.required && !(customValues[f.field_key] ?? "").trim());
+    for (const f of missingCustom) next[`custom_${f.field_key}`] = "This field is required";
     setErrors(next);
 
     // Keep the exact toast messages/priority the QA verified (CHK-01/02/03).
@@ -212,14 +272,39 @@ export function CareerApplyPage() {
       toast.error(t("careers.apply.errorSalaryMax"));
       return;
     }
+    if (missingScreening.length > 0) {
+      toast.error(t("careers.apply.screeningRequiredToast"));
+      return;
+    }
+    if (missingCustom.length > 0) { toast.error("Please complete all required application fields"); return; }
     setSubmitError(null);
     applyMutation.mutate();
   }
 
-  if (jobQuery.isLoading) {
+  // Wait for BOTH the job and its screening questions before showing the form:
+  // rendering with a failed screening fetch would let the applicant submit with
+  // no required answers and hit an unfixable server rejection.
+  if (jobQuery.isLoading || screeningQuery.isLoading || customFieldsQuery.isLoading) {
     return (
       <div className="flex h-64 items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-brand-600" />
+      </div>
+    );
+  }
+
+  if (screeningQuery.isError || customFieldsQuery.isError) {
+    return (
+      <div className="mx-auto max-w-2xl">
+        <div className="rounded-xl border border-gray-200 bg-white p-6 text-center shadow-sm">
+          <p className="text-gray-700">{t("careers.apply.screeningLoadError")}</p>
+          <button
+            type="button"
+            onClick={() => screeningQuery.refetch()}
+            className="mt-4 inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
+          >
+            {t("careers.apply.retry")}
+          </button>
+        </div>
       </div>
     );
   }
@@ -303,16 +388,108 @@ export function CareerApplyPage() {
             <label htmlFor="phone" className="block text-sm font-medium text-gray-700">
               {t("careers.apply.phoneLabel")}
             </label>
-            <input
-              id="phone"
-              name="phone"
-              type="tel"
-              value={form.phone}
-              onChange={handleChange}
-              className={fieldClass("phone")}
-            />
+            <div className="mt-1 flex gap-2">
+              <select
+                id="country_code"
+                name="country_code"
+                value={form.country_code}
+                onChange={(event) =>
+                  setForm((previous) => ({ ...previous, country_code: event.target.value }))
+                }
+                className="w-32 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+                aria-label={t("careers.apply.countryCodeLabel", { defaultValue: "Country code" })}
+              >
+                {COUNTRY_CODES.map((country) => (
+                  <option key={country.code} value={country.code}>
+                    {country.label}
+                  </option>
+                ))}
+              </select>
+              <input
+                id="phone"
+                name="phone"
+                type="tel"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                maxLength={REQUIRED_PHONE_DIGITS}
+                value={form.phone}
+                onChange={handleChange}
+                className={fieldClass("phone").replace("mt-1 ", "")}
+              />
+            </div>
             {errors.phone && <p className="mt-1 text-xs text-red-600">{errors.phone}</p>}
           </div>
+
+          {/* Screening questions (job-specific) */}
+          {questions.length > 0 && (
+            <div className="space-y-4 rounded-lg border border-gray-200 bg-gray-50 p-4">
+              <h3 className="text-sm font-semibold text-gray-900">{t("careers.apply.screeningTitle")}</h3>
+              {questions.map((q) => {
+                const val = answers[q.id] ?? "";
+                const set = (v: string) => setAnswers((a) => ({ ...a, [q.id]: v }));
+                const key = `screening_${q.id}`;
+                return (
+                  <div key={q.id}>
+                    <label className="block text-sm font-medium text-gray-700">
+                      {q.question} {q.required && <span className="text-red-500">*</span>}
+                    </label>
+                    {q.type === "yes_no" ? (
+                      <div className="mt-1 flex gap-4">
+                        {["Yes", "No"].map((opt) => (
+                          <label key={opt} className="inline-flex items-center gap-1.5 text-sm text-gray-700">
+                            <input
+                              type="radio"
+                              name={key}
+                              checked={val === opt}
+                              onChange={() => set(opt)}
+                            />
+                            {opt}
+                          </label>
+                        ))}
+                      </div>
+                    ) : q.type === "single_choice" ? (
+                      <select value={val} onChange={(e) => set(e.target.value)} className={fieldClass(key)}>
+                        <option value="">{t("careers.apply.screeningSelect")}</option>
+                        {(q.options ?? []).map((opt) => (
+                          <option key={opt} value={opt}>
+                            {opt}
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        type={q.type === "number" ? "number" : "text"}
+                        value={val}
+                        maxLength={2000}
+                        onChange={(e) => set(e.target.value)}
+                        className={fieldClass(key)}
+                      />
+                    )}
+                    {errors[key] && <p className="mt-1 text-xs text-red-600">{errors[key]}</p>}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {customFields.length > 0 && (
+            <div className="space-y-4 rounded-lg border border-gray-200 bg-gray-50 p-4">
+              <h3 className="text-sm font-semibold text-gray-900">Additional application details</h3>
+              {customFields.filter((f) => !f.condition_field_key || (customValues[f.condition_field_key] ?? "") === (f.condition_value ?? "")).map((f) => {
+                const value = customValues[f.field_key] ?? "";
+                const set = (next: string) => setCustomValues((current) => ({ ...current, [f.field_key]: next }));
+                const key = `custom_${f.field_key}`;
+                return <div key={f.id}><label className="block text-sm font-medium text-gray-700">{f.label} {f.required && <span className="text-red-500">*</span>}</label>
+                  {f.field_type === "yes_no" ? <select className={fieldClass(key)} value={value} onChange={(e) => set(e.target.value)}><option value="">Select…</option><option>Yes</option><option>No</option></select>
+                    : f.field_type === "multi_choice" ? <select multiple className={fieldClass(key)} value={value ? value.split("\u001f") : []} onChange={(e) => set(Array.from(e.target.selectedOptions).map((option) => option.value).join("\u001f"))}>{(f.options ?? []).map((option) => <option key={option}>{option}</option>)}</select>
+                    : f.field_type === "single_choice" ? <select className={fieldClass(key)} value={value} onChange={(e) => set(e.target.value)}><option value="">Select…</option>{(f.options ?? []).map((option) => <option key={option}>{option}</option>)}</select>
+                    : f.field_type === "textarea" ? <textarea className={fieldClass(key)} rows={3} value={value} onChange={(e) => set(e.target.value)} />
+                    : <input className={fieldClass(key)} type={f.field_type === "number" ? "number" : f.field_type === "date" ? "date" : "text"} value={value} onChange={(e) => set(e.target.value)} />}
+                  {errors[key] && <p className="mt-1 text-xs text-red-600">{errors[key]}</p>}
+                </div>;
+              })}
+            </div>
+          )}
 
           {/* Resume upload */}
           <div>

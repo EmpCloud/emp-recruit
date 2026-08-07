@@ -17,7 +17,7 @@ import { ADMIN_ROLES } from "@/lib/roles";
 // Route config imports
 import { jobRoutes } from "./routes/jobs.routes";
 import { candidateRoutes } from "./routes/candidates.routes";
-import { interviewRoutes } from "./routes/interviews.routes";
+import { adminInterviewRoutes, panelistInterviewRoutes } from "./routes/interviews.routes";
 import { offerRoutes } from "./routes/offers.routes";
 import { onboardingRoutes } from "./routes/onboarding.routes";
 import { portalRoutes } from "./routes/portal.routes";
@@ -60,6 +60,12 @@ const CareerPage = lazyWithRetry(() =>
 const ApplicationsListPage = lazyWithRetry(() =>
   import("@/pages/applications/ApplicationsListPage").then((m) => ({ default: m.ApplicationsListPage })),
 );
+const ApplicationDetailPage = lazyWithRetry(() =>
+  import("@/pages/applications/ApplicationDetailPage").then((m) => ({ default: m.ApplicationDetailPage })),
+);
+const RecruitmentOperationsPage = lazyWithRetry(() =>
+  import("@/pages/operations/RecruitmentOperationsPage").then((m) => ({ default: m.RecruitmentOperationsPage })),
+);
 function PageLoader() {
   return (
     <div className="flex h-64 items-center justify-center">
@@ -92,6 +98,7 @@ function NotFoundPage() {
 }
 
 function SSOGate({ children }: { children: React.ReactNode }) {
+  const { t } = useTranslation();
   const login = useAuthStore((s) => s.login);
   const [ssoToken] = useState(() => extractSSOToken());
   const [ready, setReady] = useState(!ssoToken); // ready immediately if no SSO token
@@ -123,13 +130,13 @@ function SSOGate({ children }: { children: React.ReactNode }) {
       } catch (err: any) {
         if (cancelled) return;
         console.error("SSO exchange failed:", err);
-        setError("SSO login failed. Please try logging in manually.");
+        setError(t("auth.ssoFailed"));
         setReady(true);
       }
     })();
 
     return () => { cancelled = true; };
-  }, [ssoToken, login]);
+  }, [ssoToken, login, t]);
 
   if (!ready) return <PageLoader />;
   if (error) {
@@ -137,7 +144,7 @@ function SSOGate({ children }: { children: React.ReactNode }) {
       <div className="flex h-screen items-center justify-center">
         <div className="text-center">
           <p className="text-red-600 mb-4">{error}</p>
-          <a href="/login" className="text-brand-600 underline">Go to login</a>
+          <a href="/login" className="text-brand-600 underline">{t("auth.goToLogin")}</a>
         </div>
       </div>
     );
@@ -163,6 +170,7 @@ export default function App() {
           <Route path="/dashboard" element={<DashboardPage />} />
           {/* Referrals */}
           <Route path="/referrals" element={<ReferralListPage />} />
+          {panelistInterviewRoutes}
 
           {/* Staff-only workspace — employees are redirected to /dashboard.
               Mirrors the server's authorize() role checks so admin pages can't
@@ -170,7 +178,7 @@ export default function App() {
           <Route element={<RequireRole roles={ADMIN_ROLES} />}>
             {jobRoutes}
             {candidateRoutes}
-            {interviewRoutes}
+            {adminInterviewRoutes}
             {offerRoutes}
             {onboardingRoutes}
 
@@ -187,12 +195,14 @@ export default function App() {
 
             {/* All applications */}
             <Route path="/applications" element={<ApplicationsListPage />} />
+            <Route path="/applications/:id" element={<ApplicationDetailPage />} />
 
             {/* Analytics */}
             <Route path="/analytics" element={<AnalyticsPage />} />
 
             {/* Settings */}
             <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/recruitment-operations" element={<RecruitmentOperationsPage />} />
           </Route>
 
           {/* Unknown routes for a signed-in user render a styled 404 inside the

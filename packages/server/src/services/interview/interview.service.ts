@@ -71,6 +71,22 @@ export interface ListInterviewsParams {
   search?: string;
   sort_field?: string;
   sort_order?: "asc" | "desc";
+  panelist_user_id?: number;
+}
+
+export function interviewViewerScope(viewer: { role: string; userId: number }): { panelistUserId?: number } {
+  return viewer.role === "employee" ? { panelistUserId: viewer.userId } : {};
+}
+
+export async function assertInterviewViewer(orgId: number, interviewId: string, viewer: { role: string; userId: number }): Promise<void> {
+  if (viewer.role !== "employee") return;
+  const interview = await getDB().findOne<Interview>("interviews", { id: interviewId, organization_id: orgId });
+  if (!interview) throw new NotFoundError("Interview", interviewId);
+  const panelist = await getDB().findOne<InterviewPanelist>("interview_panelists", {
+    interview_id: interviewId,
+    user_id: viewer.userId,
+  });
+  if (!panelist) throw new ForbiddenError("This interview is not assigned to you");
 }
 
 export interface SubmitFeedbackInput {
@@ -196,7 +212,7 @@ export async function listInterviews(
   orgId: number,
   params: ListInterviewsParams,
 ): Promise<{
-  data: (Interview & { candidate_name: string; job_title: string; panelist_count: number })[];
+  data: (Interview & { candidate_name: string; job_title: string; panelist_count: number; panelist_names: string[] })[];
   total: number;
   page: number;
   perPage: number;
@@ -211,7 +227,7 @@ export async function listInterviews(
   let totalPages: number;
 
   const search = params.search?.trim();
-  if (search) {
+  if (search || params.panelist_user_id) {
     // Candidate name and job title live in joined tables, so a text search has
     // to reach across applications -> candidates/job_postings. Only whitelisted
     // columns are interpolated into ORDER BY; everything else is bound.
@@ -219,19 +235,20 @@ export async function listInterviews(
     const offset = (page - 1) * limit;
     const filterClause =
       (params.application_id ? "AND i.application_id = ? " : "") +
-      (params.status ? "AND i.status = ? " : "");
+      (params.status ? "AND i.status = ? " : "") +
+      (params.panelist_user_id ? "AND EXISTS (SELECT 1 FROM interview_panelists viewer_ip WHERE viewer_ip.interview_id=i.id AND viewer_ip.user_id=?) " : "");
     const filterArgs: any[] = [];
     if (params.application_id) filterArgs.push(params.application_id);
     if (params.status) filterArgs.push(params.status);
-    const searchArgs = [like, like, like, like];
+    if (params.panelist_user_id) filterArgs.push(params.panelist_user_id);
+    const searchArgs = search ? [like, like, like, like] : [];
 
     const joinWhere = `FROM interviews i
         JOIN applications a ON a.id = i.application_id
         JOIN candidates c ON c.id = a.candidate_id
         JOIN job_postings j ON j.id = a.job_id
        WHERE i.organization_id = ? ${filterClause}
-         AND (c.first_name LIKE ? OR c.last_name LIKE ?
-              OR CONCAT(c.first_name, ' ', c.last_name) LIKE ? OR j.title LIKE ?)`;
+         ${search ? "AND (c.first_name LIKE ? OR c.last_name LIKE ? OR CONCAT(c.first_name, ' ', c.last_name) LIKE ? OR j.title LIKE ?)" : ""}`;
 
     const countRows = await db.raw<any[][]>(
       `SELECT COUNT(*) as total ${joinWhere}`,
@@ -301,15 +318,21 @@ export async function listInterviews(
   }
 
   const panelistRows = await db.raw<any[][]>(
-    `SELECT interview_id, COUNT(*) AS cnt
+    `SELECT interview_id, user_id
      FROM interview_panelists
      WHERE interview_id IN (${ivPlaceholders})
-     GROUP BY interview_id`,
+     ORDER BY created_at ASC`,
     interviewIds,
   );
   const panelistCounts = new Map<string, number>();
+  const panelistNames = new Map<string, string[]>();
+  const userIds = [...new Set(((panelistRows[0] || []) as any[]).map((row) => Number(row.user_id)))];
+  const users = new Map((await Promise.all(userIds.map(async (id) => [id, await findUserById(id).catch(() => null)] as const))));
   for (const r of (panelistRows[0] || []) as any[]) {
-    panelistCounts.set(r.interview_id, Number(r.cnt));
+    panelistCounts.set(r.interview_id, (panelistCounts.get(r.interview_id) || 0) + 1);
+    const user = users.get(Number(r.user_id));
+    const name = user ? `${user.first_name} ${user.last_name}`.trim() : `Panelist ${r.user_id}`;
+    panelistNames.set(r.interview_id, [...(panelistNames.get(r.interview_id) || []), name]);
   }
 
   const enriched = rows.map((interview) => {
@@ -319,6 +342,7 @@ export async function listInterviews(
       candidate_name: info?.candidate_name || "Unknown",
       job_title: info?.job_title || "Unknown",
       panelist_count: panelistCounts.get(interview.id) || 0,
+      panelist_names: panelistNames.get(interview.id) || [],
     };
   });
 
@@ -331,6 +355,22 @@ export async function listInterviews(
   };
 }
 
+/**
+ * Close interviews that were never actioned. A full day after the scheduled
+ * end is deliberately allowed for delayed feedback/status updates; after that,
+ * leaving the record as Scheduled is misleading and it becomes No Show.
+ */
+export async function reconcileOverdueInterviews(): Promise<number> {
+  const db = getDB();
+  const result = await db.raw<any>(
+    `UPDATE interviews
+        SET status = 'no_show', updated_at = NOW()
+      WHERE status IN ('scheduled', 'in_progress')
+        AND TIMESTAMPADD(MINUTE, duration_minutes + 1440, scheduled_at) < NOW()`,
+  );
+  return Number(result?.[0]?.affectedRows ?? result?.affectedRows ?? 0);
+}
+
 // ---------------------------------------------------------------------------
 // Get interview detail with panelists and feedback
 // ---------------------------------------------------------------------------
@@ -338,6 +378,7 @@ export async function listInterviews(
 export async function getInterview(
   orgId: number,
   id: string,
+  feedbackViewerUserId?: number,
 ): Promise<
   Interview & {
     panelists: InterviewPanelist[];
@@ -363,7 +404,7 @@ export async function getInterview(
   });
 
   const feedbackResult = await db.findMany<InterviewFeedback>("interview_feedback", {
-    filters: { interview_id: id },
+    filters: { interview_id: id, ...(feedbackViewerUserId ? { panelist_id: feedbackViewerUserId } : {}) },
     limit: 100,
   });
 
@@ -578,6 +619,7 @@ export async function submitFeedback(
 export async function getFeedback(
   orgId: number,
   interviewId: string,
+  panelistUserId?: number,
 ): Promise<InterviewFeedback[]> {
   const db = getDB();
 
@@ -590,7 +632,7 @@ export async function getFeedback(
   }
 
   const result = await db.findMany<InterviewFeedback>("interview_feedback", {
-    filters: { interview_id: interviewId },
+    filters: { interview_id: interviewId, ...(panelistUserId ? { panelist_id: panelistUserId } : {}) },
     limit: 100,
   });
 

@@ -17,7 +17,7 @@ const InterviewRoomPage = lazyWithRetry(() =>
   import("@/pages/interviews/InterviewRoomPage").then((m) => ({ default: m.InterviewRoomPage })),
 );
 
-export const interviewRoutes = (
+export const panelistInterviewRoutes = (
   <>
     <Route path="/interviews" element={<InterviewListPage />} />
     <Route path="/interviews/schedule" element={<InterviewSchedulePage />} />
@@ -26,3 +26,5 @@ export const interviewRoutes = (
     <Route path="/interviews/:id/room" element={<InterviewRoomPage />} />
   </>
 );
+
+export const adminInterviewRoutes = null;

@@ -13,6 +13,8 @@ import {
   ReferralStatus,
   Recommendation,
   CandidateSource,
+  HiringTeamRole,
+  RecruitmentTaskStatus,
 } from "../types";
 
 // ---------------------------------------------------------------------------
@@ -217,8 +219,8 @@ export const createCandidateSchema = z.object({
   source: z.nativeEnum(CandidateSource).default(CandidateSource.DIRECT),
   linkedin_url: z.string().url().optional(),
   portfolio_url: z.string().url().optional(),
-  current_company: z.string().max(200).optional(),
-  current_title: z.string().max(200).optional(),
+  current_company: plainText(z.string().max(200)).optional(),
+  current_title: plainText(z.string().max(200)).optional(),
   experience_years: z
     .number()
     .min(0, "Experience (years) cannot be negative")
@@ -238,8 +240,8 @@ export const bulkImportCandidateRowSchema = z.object({
   email: z.string().email().max(128),
   phone: optionalPhone,
   source: z.nativeEnum(CandidateSource).optional(),
-  current_company: z.string().max(200).optional(),
-  current_title: z.string().max(200).optional(),
+  current_company: plainText(z.string().max(200)).optional(),
+  current_title: plainText(z.string().max(200)).optional(),
   experience_years: z.number().min(0).max(50).optional(),
   skills: z.array(z.string()).optional(),
 });
@@ -341,6 +343,9 @@ export const createOfferSchema = z
     benefits: z.string().optional(),
     notes: z.string().optional(),
     approver_ids: z.array(z.number().int()).optional(),
+    // When supplied, the server immediately renders the selected letter so
+    // the draft offer and its document cannot drift into separate workflows.
+    template_id: z.string().uuid().optional(),
   })
   .refine((d) => expiryOnOrAfterJoining(d.joining_date, d.expiry_date), {
     message: OFFER_DATE_ORDER_MESSAGE,
@@ -434,7 +439,17 @@ export const publicApplicationSchema = z.object({
   first_name: z.string().trim().min(1).max(64),
   last_name: z.string().trim().min(1).max(64),
   email: z.string().email().max(128),
-  phone: z.string().max(20).optional(),
+  country_code: z.string().regex(/^\+\d{1,4}$/).default("+91"),
+  phone: z
+    .string()
+    .refine(
+      (value) => {
+        if (!value.trim()) return true;
+        return /^\d{10}$/.test(value);
+      },
+      { message: "Enter a valid 10-digit phone number" },
+    )
+    .optional(),
   cover_letter: z.string().optional(),
   linkedin_url: z.string().url().optional(),
   portfolio_url: z.string().url().optional(),
@@ -543,4 +558,94 @@ export const submitAssessmentSchema = z.object({
       time_taken_seconds: z.number().int().min(0).optional(),
     }),
   ).min(1).max(500),
+});
+
+// ---------------------------------------------------------------------------
+// Screening / Knockout Questions (029)
+// ---------------------------------------------------------------------------
+
+export const screeningQuestionTypeEnum = z.enum(["text", "number", "yes_no", "single_choice"]);
+
+export const screeningQuestionInputSchema = z
+  .object({
+    question: z.string().trim().min(2).max(500),
+    type: screeningQuestionTypeEnum.default("text"),
+    options: z.array(z.string().trim().min(1).max(200)).max(20).optional(),
+    required: z.boolean().default(true),
+    is_knockout: z.boolean().default(false),
+    knockout_value: z.string().max(255).optional(),
+    sort_order: z.number().int().min(0).default(0),
+  })
+  .refine((d) => d.type !== "single_choice" || (d.options != null && d.options.length >= 2), {
+    message: "Single-choice questions need at least two options",
+    path: ["options"],
+  });
+
+// Replace the full ordered set of screening questions on a job in one request.
+export const setScreeningQuestionsSchema = z.object({
+  questions: z.array(screeningQuestionInputSchema).max(30),
+});
+
+// A candidate's answers submitted with a public application.
+export const screeningAnswerSchema = z.object({
+  question_id: z.string().uuid(),
+  answer: z.string().max(2000).optional(),
+});
+export const screeningAnswersSchema = z.array(screeningAnswerSchema).max(30);
+
+// ---------------------------------------------------------------------------
+// Application workflow (030) — assignment, SLA, bulk stage
+// ---------------------------------------------------------------------------
+
+export const assignApplicationSchema = z.object({
+  // null clears the assignment.
+  assigned_to: z.number().int().nullable().optional(),
+  // ISO date (YYYY-MM-DD); null/empty clears it.
+  sla_due_date: z
+    .string()
+    .refine((v) => !v || !isNaN(Date.parse(v)), { message: "Invalid date" })
+    .nullable()
+    .optional(),
+});
+
+export const bulkStageSchema = z.object({
+  application_ids: z.array(z.string().uuid()).min(1, "Select at least one application").max(500),
+  stage: z.nativeEnum(ApplicationStage),
+  notes: z.string().max(1000).optional(),
+});
+
+// ---------------------------------------------------------------------------
+// Hiring team & recruitment tasks (031)
+// ---------------------------------------------------------------------------
+
+const optionalDate = z
+  .string()
+  .refine((v) => !v || !isNaN(Date.parse(v)), { message: "Invalid date" })
+  .nullable()
+  .optional();
+
+export const addHiringTeamMemberSchema = z.object({
+  user_id: z.number().int().positive(),
+  role: z.nativeEnum(HiringTeamRole),
+});
+
+export const updateHiringTeamMemberSchema = z.object({
+  role: z.nativeEnum(HiringTeamRole),
+});
+
+export const createRecruitmentTaskSchema = z.object({
+  title: plainText(z.string().min(1, "Title is required").max(300)),
+  description: plainText(z.string().max(2000)).nullable().optional(),
+  assigned_to: z.number().int().positive().nullable().optional(),
+  due_date: optionalDate,
+  application_id: z.string().uuid().nullable().optional(),
+  status: z.nativeEnum(RecruitmentTaskStatus).optional(),
+});
+
+export const updateRecruitmentTaskSchema = z.object({
+  title: plainText(z.string().min(1).max(300)).optional(),
+  description: plainText(z.string().max(2000)).nullable().optional(),
+  assigned_to: z.number().int().positive().nullable().optional(),
+  due_date: optionalDate,
+  status: z.nativeEnum(RecruitmentTaskStatus).optional(),
 });

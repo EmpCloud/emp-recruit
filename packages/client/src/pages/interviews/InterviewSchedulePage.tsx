@@ -94,7 +94,7 @@ export function InterviewSchedulePage() {
   const { data: appsData, isLoading: loadingApps } = useQuery({
     queryKey: ["applications-for-schedule", appSearch],
     queryFn: () =>
-      apiGet<PaginatedResponse<ApplicationRow>>("/applications", {
+      apiGet<PaginatedResponse<ApplicationRow>>("/interviews/schedule-options", {
         page: 1,
         perPage: 50,
         ...(appSearch && { search: appSearch }),
@@ -229,7 +229,7 @@ export function InterviewSchedulePage() {
 
           {loadingApps ? (
             <div className="flex items-center justify-center gap-2 py-8 text-sm text-gray-400">
-              <Loader2 className="h-5 w-5 animate-spin" /> Loading applications…
+              <Loader2 className="h-5 w-5 animate-spin" /> {t("interviews.schedule.loadingApplications")}
             </div>
           ) : applications.length === 0 ? (
             <div className="rounded-xl border border-dashed border-gray-300 px-4 py-8 text-center">
