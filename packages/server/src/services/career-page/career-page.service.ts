@@ -162,6 +162,7 @@ export async function getPublicJobs(
     search?: string;
     department?: string;
     location?: string;
+    sort?: "newest" | "oldest";
   } = {},
 ): Promise<PublicJobsResult> {
   const db = getDB();
@@ -211,7 +212,7 @@ export async function getPublicJobs(
     `SELECT jp.*, (SELECT COUNT(*) FROM applications a WHERE a.job_id = jp.id) AS applicant_count
      FROM job_postings jp
      WHERE ${whereSql}
-     ORDER BY jp.published_at DESC, jp.created_at DESC
+     ORDER BY jp.published_at ${params.sort === "oldest" ? "ASC" : "DESC"}, jp.created_at ${params.sort === "oldest" ? "ASC" : "DESC"}
      LIMIT ? OFFSET ?`,
     [...args, perPage, offset],
   );

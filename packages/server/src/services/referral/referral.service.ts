@@ -20,11 +20,9 @@ interface SubmitReferralData {
 }
 
 interface ListParams {
-  page?: number;
-  limit?: number;
-  status?: string;
-  search?: string;
-  referrerId?: number; // for employee: show only own referrals
+  page?: number; limit?: number; status?: string; search?: string;
+  referrerId?: number; jobId?: string; dateFrom?: string; dateTo?: string;
+  sort?: string; order?: "asc" | "desc";
 }
 
 /** Jobs employees may refer candidates to. Kept behind the referral API because
@@ -130,128 +128,24 @@ function parseStatuses(status?: string): string[] {
     .filter(Boolean);
 }
 
-export async function listReferrals(
-  orgId: number,
-  params: ListParams,
-): Promise<{
-  data: (Referral & { candidate_name: string; job_title: string })[];
-  total: number;
-  page: number;
-  perPage: number;
-  totalPages: number;
-}> {
-  const db = getDB();
-  // Repair legacy rows that predate the paid-bonus invariant so the API never
-  // presents a payment as completed without a positive recorded amount.
-  await db.raw(
-    `UPDATE referrals SET status = 'bonus_eligible', updated_at = NOW()
-      WHERE organization_id = ? AND status = 'bonus_paid'
-        AND (bonus_amount IS NULL OR bonus_amount <= 0 OR bonus_paid_at IS NULL)`,
-    [orgId],
-  );
-  const page = params.page || 1;
-  const limit = params.limit || 20;
-
-  let rows: Referral[];
-  let total: number;
-  let totalPages: number;
-
-  const search = params.search?.trim();
-  if (search) {
-    // The referred candidate's name/email and the job title live in joined
-    // tables, so a text search reaches across candidates and job_postings.
-    const like = `%${search}%`;
-    const offset = (page - 1) * limit;
-    // `status` accepts a comma-separated list so a dashboard card whose count
-    // spans several statuses (e.g. In Review = submitted + under_review) can
-    // deep-link to a list that matches the number it showed.
-    const statuses = parseStatuses(params.status);
-    const filterClause =
-      (statuses.length ? `AND r.status IN (${statuses.map(() => "?").join(",")}) ` : "") +
-      (params.referrerId ? "AND r.referrer_id = ? " : "");
-    const filterArgs: any[] = [];
-    if (statuses.length) filterArgs.push(...statuses);
-    if (params.referrerId) filterArgs.push(params.referrerId);
-    const searchArgs = [like, like, like, like, like];
-
-    const joinWhere = `FROM referrals r
-        JOIN candidates c ON c.id = r.candidate_id
-        JOIN job_postings j ON j.id = r.job_id
-       WHERE r.organization_id = ? ${filterClause}
-         AND (c.first_name LIKE ? OR c.last_name LIKE ?
-              OR CONCAT(c.first_name, ' ', c.last_name) LIKE ? OR c.email LIKE ? OR j.title LIKE ?)`;
-
-    const countRows = await db.raw<any[][]>(
-      `SELECT COUNT(*) as total ${joinWhere}`,
-      [orgId, ...filterArgs, ...searchArgs],
-    );
-    total = Number(countRows[0]?.[0]?.total ?? 0);
-
-    const dataRows = await db.raw<any[][]>(
-      `SELECT r.* ${joinWhere} ORDER BY r.created_at DESC LIMIT ? OFFSET ?`,
-      [orgId, ...filterArgs, ...searchArgs, limit, offset],
-    );
-    rows = dataRows[0] as Referral[];
-    totalPages = Math.max(1, Math.ceil(total / limit));
-  } else {
-    const statuses = parseStatuses(params.status);
-    if (statuses.length > 1) {
-      // findMany can't express IN (...), so a multi-status filter goes raw.
-      const offset = (page - 1) * limit;
-      const placeholders = statuses.map(() => "?").join(",");
-      const where =
-        `FROM referrals r WHERE r.organization_id = ? AND r.status IN (${placeholders})` +
-        (params.referrerId ? " AND r.referrer_id = ?" : "");
-      const args: any[] = [orgId, ...statuses];
-      if (params.referrerId) args.push(params.referrerId);
-
-      const countRows = await db.raw<any[][]>(`SELECT COUNT(*) as total ${where}`, args);
-      total = Number(countRows[0]?.[0]?.total ?? 0);
-      const dataRows = await db.raw<any[][]>(
-        `SELECT r.* ${where} ORDER BY r.created_at DESC LIMIT ? OFFSET ?`,
-        [...args, limit, offset],
-      );
-      rows = dataRows[0] as Referral[];
-      totalPages = Math.max(1, Math.ceil(total / limit));
-    } else {
-      const filters: Record<string, any> = { organization_id: orgId };
-      if (statuses.length === 1) filters.status = statuses[0];
-      if (params.referrerId) filters.referrer_id = params.referrerId;
-
-      const result = await db.findMany<Referral>("referrals", {
-        page,
-        limit,
-        filters,
-        sort: { field: "created_at", order: "desc" },
-      });
-      rows = result.data;
-      total = result.total;
-      totalPages = result.totalPages;
-    }
-  }
-
-  // Enrich with candidate name and job title
-  const enriched = await Promise.all(
-    rows.map(async (ref) => {
-      const candidate = await db.findById<Candidate>("candidates", ref.candidate_id);
-      const job = await db.findById<JobPosting>("job_postings", ref.job_id);
-      return {
-        ...ref,
-        candidate_name: candidate ? `${candidate.first_name} ${candidate.last_name}` : "Unknown",
-        job_title: job?.title || "Unknown",
-      };
-    }),
-  );
-
-  return {
-    data: enriched,
-    total,
-    page,
-    perPage: limit,
-    totalPages,
-  };
+export async function getReferralStats(orgId: number, referrerId?: number) {
+  const db = getDB(); const clause = referrerId ? " AND referrer_id = ?" : ""; const args = referrerId ? [orgId, referrerId] : [orgId];
+  const rows = await db.raw<any[][]>(`SELECT COUNT(*) AS total, SUM(CASE WHEN status IN ('submitted','under_review') THEN 1 ELSE 0 END) AS underReview, SUM(CASE WHEN status = 'bonus_eligible' THEN 1 ELSE 0 END) AS bonusEligible, SUM(CASE WHEN status = 'bonus_paid' THEN 1 ELSE 0 END) AS bonusPaid FROM referrals WHERE organization_id = ?${clause}`, args);
+  const s = rows[0]?.[0] ?? {}; return { total: Number(s.total ?? 0), underReview: Number(s.underReview ?? 0), bonusEligible: Number(s.bonusEligible ?? 0), bonusPaid: Number(s.bonusPaid ?? 0) };
 }
 
+export async function listReferrals(orgId: number, params: ListParams): Promise<{ data: any[]; total: number; page: number; perPage: number; totalPages: number }> {
+  const db = getDB(); await db.raw(`UPDATE referrals SET status = 'bonus_eligible', updated_at = NOW() WHERE organization_id = ? AND status = 'bonus_paid' AND (bonus_amount IS NULL OR bonus_amount <= 0 OR bonus_paid_at IS NULL)`, [orgId]);
+  const page = params.page || 1; const limit = params.limit || 20; const offset = (page - 1) * limit; const conditions = ["r.organization_id = ?"]; const args: any[] = [orgId]; const statuses = parseStatuses(params.status);
+  if (statuses.length) { conditions.push(`r.status IN (${statuses.map(() => "?").join(",")})`); args.push(...statuses); }
+  if (params.referrerId) { conditions.push("r.referrer_id = ?"); args.push(params.referrerId); } if (params.jobId) { conditions.push("r.job_id = ?"); args.push(params.jobId); }
+  if (params.dateFrom) { conditions.push("DATE(r.created_at) >= ?"); args.push(params.dateFrom); } if (params.dateTo) { conditions.push("DATE(r.created_at) <= ?"); args.push(params.dateTo); }
+  if (params.search?.trim()) { const q = `%${params.search.trim()}%`; conditions.push("(c.first_name LIKE ? OR c.last_name LIKE ? OR CONCAT(c.first_name, ' ', c.last_name) LIKE ? OR c.email LIKE ? OR j.title LIKE ?)"); args.push(q,q,q,q,q); }
+  const where = conditions.join(" AND "); const sortColumns: Record<string,string> = { created_at: "r.created_at", status: "r.status", bonus_amount: "r.bonus_amount" }; const sortColumn = sortColumns[params.sort || "created_at"] || "r.created_at"; const direction = params.order === "asc" ? "ASC" : "DESC";
+  const joins = `FROM referrals r JOIN candidates c ON c.id = r.candidate_id JOIN job_postings j ON j.id = r.job_id LEFT JOIN applications a ON a.id = r.application_id WHERE ${where}`;
+  const countRows = await db.raw<any[][]>(`SELECT COUNT(*) AS total ${joins}`, args); const dataRows = await db.raw<any[][]>(`SELECT r.*, CONCAT(c.first_name, ' ', c.last_name) AS candidate_name, c.email AS candidate_email, j.title AS job_title, j.department AS job_department, a.stage AS application_stage ${joins} ORDER BY ${sortColumn} ${direction} LIMIT ? OFFSET ?`, [...args, limit, offset]);
+  const total = Number(countRows[0]?.[0]?.total ?? 0); return { data: dataRows[0], total, page, perPage: limit, totalPages: Math.max(1, Math.ceil(total / limit)) };
+}
 export async function updateReferralStatus(
   orgId: number,
   id: string,

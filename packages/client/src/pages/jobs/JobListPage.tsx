@@ -1,354 +1,163 @@
-import { useState, useEffect, lazy, Suspense } from "react";
+import { useEffect, lazy, Suspense, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
-import { Plus, Search, Briefcase, MapPin, ChevronRight, Upload, PencilLine, Building2, CalendarDays, Sparkles } from "lucide-react";
-import { apiPatch } from "@/api/client";
+import {
+  Plus, Search, Briefcase, MapPin, ChevronRight, Upload, PencilLine,
+  Archive, CirclePause, FileText, CheckCircle2, ArrowUpDown,
+  List, Grid2X2, CircleDot, X,
+} from "lucide-react";
+import { apiGet } from "@/api/client";
 import { usePaginatedList } from "@/lib/usePaginatedList";
 import { Pagination, DEFAULT_PAGE_SIZE } from "@/components/Pagination";
 import { ExportButtons } from "@/components/ExportButtons";
-// Lazy-loaded so the Excel library (exceljs) is only fetched when a bulk dialog
-// is actually opened, keeping the initial Job Postings page light.
-const BulkImportJobsModal = lazy(() =>
-  import("@/components/BulkImportJobsModal").then((m) => ({ default: m.BulkImportJobsModal })),
-);
-const BulkUpdateJobsModal = lazy(() =>
-  import("@/components/BulkUpdateJobsModal").then((m) => ({ default: m.BulkUpdateJobsModal })),
-);
 import { fetchAllRows, type ExportColumn } from "@/lib/export";
-import type { JobPosting } from "@emp-recruit/shared";
-import { JobStatus } from "@emp-recruit/shared";
+import type { JobPosting, PaginatedResponse } from "@emp-recruit/shared";
 import { cn, formatDate } from "@/lib/utils";
 import { enumLabel } from "@/lib/enums";
-import toast from "react-hot-toast";
+import { Badge } from "@/components/ui/badge";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-const range = (min: number | null | undefined, max: number | null | undefined) =>
-  min == null && max == null ? "" : `${min ?? ""}–${max ?? ""}`;
+const BulkImportJobsModal = lazy(() => import("@/components/BulkImportJobsModal").then((m) => ({ default: m.BulkImportJobsModal })));
+const BulkUpdateJobsModal = lazy(() => import("@/components/BulkUpdateJobsModal").then((m) => ({ default: m.BulkUpdateJobsModal })));
 
+const range = (min: number | null | undefined, max: number | null | undefined) => min == null && max == null ? "" : `${min ?? ""}–${max ?? ""}`;
 const JOB_COLUMNS: ExportColumn<JobPosting>[] = [
-  { header: "Title", value: (j) => j.title },
-  { header: "Department", value: (j) => j.department },
-  { header: "Location", value: (j) => j.location },
-  { header: "Type", value: (j) => j.employment_type },
-  { header: "Status", value: (j) => j.status },
-  { header: "Experience", value: (j) => range(j.experience_min, j.experience_max) },
-  { header: "Salary", value: (j) => range(j.salary_min, j.salary_max) },
-  { header: "Created", value: (j) => (j.created_at ? formatDate(j.created_at) : "") },
+  { header: "Title", value: (job) => job.title }, { header: "Department", value: (job) => job.department },
+  { header: "Location", value: (job) => job.location }, { header: "Type", value: (job) => job.employment_type },
+  { header: "Status", value: (job) => job.status }, { header: "Experience", value: (job) => range(job.experience_min, job.experience_max) },
+  { header: "Created", value: (job) => job.created_at ? formatDate(job.created_at) : "" },
 ];
 
-const STATUS_TABS = [
-  { labelKey: "jobs.list.tabs.all", value: "" },
-  { labelKey: "jobs.list.tabs.draft", value: "draft" },
-  { labelKey: "jobs.list.tabs.open", value: "open" },
-  { labelKey: "jobs.list.tabs.paused", value: "paused" },
-  { labelKey: "jobs.list.tabs.closed", value: "closed" },
-  { labelKey: "jobs.list.tabs.filled", value: "filled" },
-];
-
+const STATUSES = ["", "draft", "open", "paused", "closed", "filled"] as const;
+const STATUS_META = {
+  "": { icon: Briefcase, tone: "border-brand-200 bg-brand-50 text-brand-600" },
+  open: { icon: CircleDot, tone: "border-emerald-200 bg-emerald-50 text-emerald-600" },
+  draft: { icon: FileText, tone: "border-slate-200 bg-slate-50 text-slate-600" },
+  paused: { icon: CirclePause, tone: "border-amber-200 bg-amber-50 text-amber-600" },
+  closed: { icon: Archive, tone: "border-gray-200 bg-gray-50 text-gray-500" },
+  filled: { icon: CheckCircle2, tone: "border-blue-200 bg-blue-50 text-blue-600" },
+} as const;
 const STATUS_BADGE: Record<string, string> = {
-  draft: "bg-gray-100 text-gray-700",
-  open: "bg-green-100 text-green-700",
-  paused: "bg-yellow-100 text-yellow-700",
-  closed: "bg-red-100 text-red-700",
-  filled: "bg-blue-100 text-blue-700",
+  draft: "bg-gray-100 text-gray-700", open: "bg-green-100 text-green-700", paused: "bg-yellow-100 text-yellow-700",
+  closed: "bg-red-100 text-red-700", filled: "bg-blue-100 text-blue-700",
 };
 
 export function JobListPage() {
   const { t } = useTranslation();
-  const [searchParams, setSearchParams] = useSearchParams();
-  const statusFilter = searchParams.get("status") ?? "";
-  const page = Number(searchParams.get("page") ?? "1");
-  const searchTerm = searchParams.get("search") ?? "";
-  const [searchInput, setSearchInput] = useState(searchTerm);
+  const [params, setParams] = useSearchParams();
+  const status = params.get("status") ?? "";
+  const page = Number(params.get("page") ?? "1");
+  const search = params.get("search") ?? "";
+  const department = params.get("department") ?? "";
+  const location = params.get("location") ?? "";
+  const jobType = params.get("jobType") ?? "";
+  const sort = params.get("sort") ?? "created_at";
+  const order = params.get("order") ?? "desc";
+  const [searchInput, setSearchInput] = useState(search);
+  const [view, setView] = useState<"list" | "grid">("list");
+  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [showBulkImport, setShowBulkImport] = useState(false);
   const [showBulkUpdate, setShowBulkUpdate] = useState(false);
   const queryClient = useQueryClient();
 
   function setFilter(key: string, value: string) {
-    const next = new URLSearchParams(searchParams);
-    if (value) next.set(key, value);
-    else next.delete(key);
-    if (key !== "page") next.delete("page");
-    setSearchParams(next);
+    const next = new URLSearchParams(params); value ? next.set(key, value) : next.delete(key);
+    if (key !== "page") next.delete("page"); setParams(next);
   }
+  useEffect(() => { const timer = setTimeout(() => { if (searchInput.trim() !== search) setFilter("search", searchInput.trim()); }, 400); return () => clearTimeout(timer); }, [searchInput]);
 
-  // Debounce the search box into the URL; changing the term resets to page 1.
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (searchInput.trim() !== searchTerm) setFilter("search", searchInput.trim());
-    }, 400);
-    return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchInput]);
+  const counts = useQueries({ queries: STATUSES.map((value) => ({
+    queryKey: ["jobs-status-count", value],
+    queryFn: async () => (await apiGet<PaginatedResponse<JobPosting>>("/jobs", { status: value || undefined, perPage: 1 })).data?.total ?? 0,
+  })) });
+  const allJobsQuery = useQuery({
+    queryKey: ["jobs-filter-options"],
+    queryFn: async () => (await apiGet<PaginatedResponse<JobPosting>>("/jobs", { perPage: 100, sort: "title", order: "asc" })).data?.data ?? [],
+  });
+  const options = useMemo(() => ({
+    departments: [...new Set((allJobsQuery.data ?? []).map((job) => job.department).filter(Boolean))] as string[],
+    locations: [...new Set((allJobsQuery.data ?? []).map((job) => job.location).filter(Boolean))] as string[],
+    types: [...new Set((allJobsQuery.data ?? []).map((job) => job.employment_type).filter(Boolean))] as string[],
+  }), [allJobsQuery.data]);
 
-  const { rows: jobs, total, isLoading } = usePaginatedList<JobPosting>(
-    ["jobs"],
-    "/jobs",
-    { status: statusFilter, search: searchTerm },
-    page,
-  );
+  const { rows: jobs, total, isLoading } = usePaginatedList<JobPosting>(["jobs"], "/jobs", {
+    status, search, department, location, employment_type: jobType, sort, order,
+  }, page);
+  const filtersActive = Boolean(search || department || location || jobType);
+  const allSelected = jobs.length > 0 && jobs.every((job) => selected.has(job.id));
+  const toggleAll = () => setSelected(allSelected ? new Set() : new Set(jobs.map((job) => job.id)));
+  const toggleOne = (id: string) => setSelected((current) => { const next = new Set(current); next.has(id) ? next.delete(id) : next.add(id); return next; });
 
   return (
-    <div className="mx-auto w-full max-w-[1500px] space-y-5 sm:space-y-6">
-      {/* Header */}
-      <section className="relative z-20 overflow-visible rounded-3xl bg-gradient-to-br from-[#111a35] via-[#18244a] to-brand-900 px-5 py-7 text-white shadow-xl sm:px-7 sm:py-8 lg:px-9">
-        <div className="pointer-events-none absolute right-4 top-4 h-40 w-40 rounded-full bg-brand-400/20 blur-3xl" aria-hidden="true" />
-        <div className="relative flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
-        <div className="max-w-2xl">
-          <p className="mb-2 inline-flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-brand-200"><Sparkles className="h-3.5 w-3.5" aria-hidden="true" />Hiring Workspace</p>
-          <h1 className="text-balance text-3xl font-bold tracking-tight sm:text-4xl">{t("jobs.list.title")}</h1>
-          <p className="mt-3 text-sm leading-6 text-slate-300 sm:text-base">
-            {t("jobs.list.totalCount", { count: total })}
-          </p>
-        </div>
+    <div className="space-y-5 pb-4">
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+        <div><h1 className="text-2xl font-bold text-gray-900">{t("jobs.list.title")}</h1><p className="mt-1 text-sm text-gray-500">{t("jobs.list.totalCount", { count: counts[0].data ?? total })}</p></div>
         <div className="flex flex-wrap items-center gap-2">
-          <div className="rounded-xl bg-white/10 p-0.5 ring-1 ring-white/15 [&>div>button]:border-white/15 [&>div>button]:bg-white/10 [&>div>button]:text-white [&>div>button:hover]:bg-white/15">
-          <ExportButtons
-            baseName="jobs"
-            title={t("jobs.list.title")}
-            subtitle={t("jobs.list.totalCount", { count: total })}
-            columns={JOB_COLUMNS}
-            fetchRows={() => fetchAllRows<JobPosting>("/jobs", { status: statusFilter, search: searchTerm })}
-          />
-          </div>
-          <button
-            type="button"
-            onClick={() => setShowBulkImport(true)}
-            className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-white/15 bg-white/10 px-3 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-white/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white sm:px-4"
-          >
-            <Upload className="h-4 w-4" aria-hidden="true" />
-            {t("jobs.list.bulkImport")}
-          </button>
-          <button
-            type="button"
-            onClick={() => setShowBulkUpdate(true)}
-            className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-white/15 bg-white/10 px-3 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-white/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white sm:px-4"
-          >
-            <PencilLine className="h-4 w-4" aria-hidden="true" />
-            {t("jobs.list.bulkUpdate")}
-          </button>
-          <Link
-            to="/jobs/new"
-            className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-bold text-brand-800 shadow-sm transition-[background-color,transform] hover:-translate-y-0.5 hover:bg-brand-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white sm:flex-none"
-          >
-            <Plus className="h-4 w-4" aria-hidden="true" />
-            {t("jobs.list.createJob")}
-          </Link>
+          <ExportButtons baseName="jobs" title="Job Postings" subtitle={`${total} jobs`} columns={JOB_COLUMNS} fetchRows={() => fetchAllRows<JobPosting>("/jobs", { status, search })} />
+          <Button variant="outline" onClick={() => setShowBulkImport(true)}><Upload className="h-4 w-4" />{t("jobs.list.bulkImport")}</Button>
+          <Button variant="outline" onClick={() => setShowBulkUpdate(true)}><PencilLine className="h-4 w-4" />{t("jobs.list.bulkUpdate")}</Button>
+          <Link to="/jobs/new" className={buttonVariants()}><Plus className="h-4 w-4" />{t("jobs.list.createJob")}</Link>
         </div>
-        </div>
-      </section>
-
-      {showBulkImport && (
-        <Suspense fallback={null}>
-          <BulkImportJobsModal
-            open={showBulkImport}
-            onClose={() => setShowBulkImport(false)}
-            onImported={() => queryClient.invalidateQueries({ queryKey: ["jobs"] })}
-          />
-        </Suspense>
-      )}
-
-      {showBulkUpdate && (
-        <Suspense fallback={null}>
-          <BulkUpdateJobsModal
-            open={showBulkUpdate}
-            onClose={() => setShowBulkUpdate(false)}
-            fetchRows={() => fetchAllRows<JobPosting>("/jobs", {})}
-            onUpdated={() => queryClient.invalidateQueries({ queryKey: ["jobs"] })}
-          />
-        </Suspense>
-      )}
-
-      <section aria-label="Filter job postings" className="relative z-10 rounded-2xl border border-gray-200 bg-white p-3 shadow-sm sm:p-4">
-      {/* Status tabs */}
-      <div className="flex gap-1 overflow-x-auto rounded-xl bg-gray-100 p-1 scrollbar-thin" role="tablist" aria-label="Job status">
-        {STATUS_TABS.map((tab) => (
-          <button
-            key={tab.value}
-            type="button"
-            role="tab"
-            aria-selected={statusFilter === tab.value}
-            onClick={() => setFilter("status", tab.value)}
-            className={cn(
-              "min-h-10 whitespace-nowrap rounded-lg px-4 py-2 text-sm font-semibold transition-[background-color,color,box-shadow] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500",
-              statusFilter === tab.value
-                ? "bg-white text-brand-700 shadow-sm"
-                : "text-gray-500 hover:bg-white/60 hover:text-gray-800",
-            )}
-          >
-            {t(tab.labelKey)}
-          </button>
-        ))}
       </div>
 
-      {/* Search */}
-      <div className="relative mt-3">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-        <input
-          type="text"
-          name="job-search"
-          aria-label={t("jobs.list.searchPlaceholder")}
-          autoComplete="off"
-          value={searchInput}
-          onChange={(e) => setSearchInput(e.target.value)}
-          placeholder={t("jobs.list.searchPlaceholder")}
-          className="min-h-11 w-full rounded-xl border border-gray-300 bg-white py-2.5 pl-10 pr-4 text-sm shadow-sm transition-colors placeholder:text-gray-400 hover:border-gray-400 focus-visible:border-brand-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/20"
-        />
-      </div>
-      </section>
+      {showBulkImport && <Suspense fallback={null}><BulkImportJobsModal open onClose={() => setShowBulkImport(false)} onImported={() => queryClient.invalidateQueries({ queryKey: ["jobs"] })} /></Suspense>}
+      {showBulkUpdate && <Suspense fallback={null}><BulkUpdateJobsModal open onClose={() => setShowBulkUpdate(false)} fetchRows={() => fetchAllRows<JobPosting>("/jobs", {})} onUpdated={() => queryClient.invalidateQueries({ queryKey: ["jobs"] })} /></Suspense>}
 
-      {/* Table */}
-      {isLoading ? (
-        <div className="flex justify-center py-12">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-brand-600 border-t-transparent" />
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+        {STATUSES.map((value, index) => { const meta = STATUS_META[value]; const Icon = meta.icon; const active = status === value; return (
+          <Button key={value || "all"} variant="outline" onClick={() => setFilter("status", value)} className={cn("h-auto justify-start gap-3 rounded-xl p-4 text-left transition hover:-translate-y-0.5 hover:shadow-md", active && "border-brand-300 ring-1 ring-brand-200")}>
+            <span className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border", meta.tone)}><Icon className="h-5 w-5" /></span>
+            <span><span className={cn("block text-xs font-medium", active ? "text-brand-600" : "text-gray-500")}>{t(`jobs.list.tabs.${value || "all"}`)}</span><span className="mt-0.5 block text-xl font-bold text-gray-900">{counts[index].isLoading ? "—" : counts[index].data ?? 0}</span></span>
+          </Button>
+        ); })}
+      </div>
+
+      <div className="flex overflow-x-auto border-b border-gray-200">
+        {STATUSES.map((value) => <Button variant="ghost" key={value || "all"} onClick={() => setFilter("status", value)} className={cn("h-auto rounded-none border-b-2 px-5 py-3", status === value ? "border-brand-600 text-brand-600" : "border-transparent")}>{t(`jobs.list.tabs.${value || "all"}`)}</Button>)}
+      </div>
+
+      <Card className="p-3">
+        <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-[minmax(240px,1.6fr)_repeat(4,minmax(130px,1fr))_170px_auto]">
+          <label className="relative"><Search className="absolute left-3 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-gray-400" /><Input value={searchInput} onChange={(e) => setSearchInput(e.target.value)} placeholder={t("jobs.list.searchPlaceholder")} className="pl-9" /></label>
+          <Select value={department || "all"} onValueChange={(value) => setFilter("department", value === "all" ? "" : value)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">{t("jobs.list.allDepartments")}</SelectItem>{options.departments.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent></Select>
+          <Select value={location || "all"} onValueChange={(value) => setFilter("location", value === "all" ? "" : value)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">{t("jobs.list.allLocations")}</SelectItem>{options.locations.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent></Select>
+          <Select value={status || "all"} onValueChange={(value) => setFilter("status", value === "all" ? "" : value)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">{t("jobs.list.allStatuses")}</SelectItem>{STATUSES.slice(1).map((item) => <SelectItem key={item} value={item}>{enumLabel(t, "jobStatus", item)}</SelectItem>)}</SelectContent></Select>
+          <Select value={jobType || "all"} onValueChange={(value) => setFilter("jobType", value === "all" ? "" : value)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">{t("jobs.list.allJobTypes")}</SelectItem>{options.types.map((item) => <SelectItem key={item} value={item}>{enumLabel(t, "employmentType", item)}</SelectItem>)}</SelectContent></Select>
+          <div className="relative"><ArrowUpDown className="pointer-events-none absolute left-3 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-brand-500" /><Select value={`${sort}:${order}`} onValueChange={(value) => { const [field, direction] = value.split(":"); const next = new URLSearchParams(params); next.set("sort", field); next.set("order", direction); next.delete("page"); setParams(next); }}><SelectTrigger className="pl-9"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="created_at:desc">{t("jobs.list.sortNewest")}</SelectItem><SelectItem value="created_at:asc">{t("jobs.list.sortOldest")}</SelectItem><SelectItem value="title:asc">{t("jobs.list.sortTitle")}</SelectItem></SelectContent></Select></div>
+          <div className="flex overflow-hidden rounded-lg border border-gray-300"><Button variant="ghost" size="icon" onClick={() => setView("list")} className={cn("rounded-none", view === "list" && "bg-brand-50 text-brand-600")}><List className="h-4 w-4" /></Button><Button variant="ghost" size="icon" onClick={() => setView("grid")} className={cn("rounded-none border-l border-gray-300", view === "grid" && "bg-brand-50 text-brand-600")}><Grid2X2 className="h-4 w-4" /></Button></div>
         </div>
-      ) : jobs.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-gray-300 py-12 text-center">
-          <Briefcase className="mx-auto h-10 w-10 text-gray-400" />
-          <p className="mt-2 text-sm font-medium text-gray-900">{t("jobs.list.emptyTitle")}</p>
-          <p className="mt-1 text-sm text-gray-500">{t("jobs.list.emptyDescription")}</p>
-          <Link
-            to="/jobs/new"
-            className="mt-4 inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
-          >
-            <Plus className="h-4 w-4" />
-            {t("jobs.list.createJob")}
-          </Link>
-        </div>
+        {filtersActive && <Button variant="ghost" size="sm" onClick={() => { setSearchInput(""); const next = new URLSearchParams(params); ["search", "department", "location", "jobType", "page"].forEach((key) => next.delete(key)); setParams(next); }} className="mt-2 h-auto px-1 text-xs"><X className="h-3.5 w-3.5" />{t("jobs.list.clearFilters")}</Button>}
+      </Card>
+
+      {isLoading ? <div className="flex justify-center py-16"><div className="h-8 w-8 animate-spin rounded-full border-4 border-brand-600 border-t-transparent" /></div> : jobs.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-gray-300 bg-white py-14 text-center"><Briefcase className="mx-auto h-10 w-10 text-gray-400" /><p className="mt-3 font-semibold text-gray-900">{t("jobs.list.emptyTitle")}</p><p className="mt-1 text-sm text-gray-500">{t("jobs.list.emptyDescription")}</p></div>
+      ) : view === "grid" ? (
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{jobs.map((job) => <Link key={job.id} to={`/jobs/${job.id}`} className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"><div className="flex justify-between gap-3"><h3 className="font-semibold text-gray-900">{job.title}</h3><Badge className={cn("h-fit border-0", STATUS_BADGE[job.status])}>{enumLabel(t, "jobStatus", job.status)}</Badge></div><p className="mt-2 text-sm text-gray-500">{job.department || "—"}</p><p className="mt-3 inline-flex items-center gap-1 text-xs text-gray-400"><MapPin className="h-3.5 w-3.5" />{job.location || "—"}</p></Link>)}</div>
       ) : (
-        <>
-        <div className="space-y-3 md:hidden">
-          {jobs.map((job) => (
-            <Link key={job.id} to={`/jobs/${job.id}`} className="group block rounded-2xl border border-gray-200 bg-white p-4 shadow-sm transition-[border-color,box-shadow] hover:border-brand-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0"><h2 className="break-words text-base font-bold text-gray-900 transition-colors group-hover:text-brand-700">{job.title}</h2><p className="mt-1 text-xs text-gray-400">Created {formatDate(job.created_at)}</p></div>
-                <ChevronRight className="h-5 w-5 shrink-0 text-gray-400" aria-hidden="true" />
-              </div>
-              <div className="mt-4 grid gap-2 text-sm text-gray-500 min-[430px]:grid-cols-2">
-                <span className="inline-flex min-w-0 items-center gap-2"><Building2 className="h-4 w-4 shrink-0 text-gray-400" aria-hidden="true" /><span className="truncate">{job.department || "No department"}</span></span>
-                <span className="inline-flex min-w-0 items-center gap-2"><MapPin className="h-4 w-4 shrink-0 text-gray-400" aria-hidden="true" /><span className="truncate">{job.location || "No location"}</span></span>
-                <span className="inline-flex min-w-0 items-center gap-2"><Briefcase className="h-4 w-4 shrink-0 text-gray-400" aria-hidden="true" /><span className="truncate">{enumLabel(t, "employmentType", job.employment_type)}</span></span>
-                <span className="inline-flex min-w-0 items-center gap-2"><CalendarDays className="h-4 w-4 shrink-0 text-gray-400" aria-hidden="true" /><span className="truncate">{(job as any).is_internal ? t("jobs.list.internal") : t("jobs.list.public")}</span></span>
-              </div>
-              <div className="mt-4 flex flex-wrap items-center gap-2">
-                <span className={cn("inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold capitalize", STATUS_BADGE[job.status] ?? "bg-gray-100 text-gray-700")}>{enumLabel(t, "jobStatus", job.status)}</span>
-                {(job as any).remote_policy && <span className="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-600 capitalize">{enumLabel(t, "remotePolicy", (job as any).remote_policy)}</span>}
-              </div>
-            </Link>
-          ))}
-        </div>
-
-        <div className="hidden overflow-x-auto rounded-2xl border border-gray-200 bg-white shadow-sm md:block">
-          <table className="w-full min-w-[980px] table-fixed divide-y divide-gray-200">
-            <colgroup>
-              <col className="w-[20%]" />
-              <col className="w-[15%]" />
-              <col className="w-[14%]" />
-              <col className="w-[11%]" />
-              <col className="w-[10%]" />
-              <col className="w-[10%]" />
-              <col className="w-[15%]" />
-              <col className="w-[5%]" />
-            </colgroup>
-            <thead className="bg-gray-50/80">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                  {t("jobs.list.colTitle")}
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                  {t("jobs.list.colDepartment")}
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                  {t("jobs.list.colLocation")}
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                  {t("jobs.list.colType")}
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                  {t("jobs.list.colVisibility")}
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                  {t("jobs.list.colStatus")}
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium uppercase tracking-wider text-gray-500">
-                  {t("jobs.list.colCreated")}
-                </th>
-                <th className="px-6 py-3" />
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {jobs.map((job) => (
-                <tr key={job.id} className="transition-colors hover:bg-brand-50/30">
-                  <td className="px-6 py-4">
-                    <Link to={`/jobs/${job.id}`} className="block max-w-72 break-words font-semibold text-gray-900 hover:text-brand-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500">
-                      {job.title}
-                    </Link>
-                  </td>
-                  <td className="px-6 py-4 text-sm text-gray-500"><span className="block truncate" title={job.department || undefined}>{job.department || "--"}</span></td>
-                  <td className="px-6 py-4 text-sm text-gray-500">
-                    {job.location ? (
-                      <span className="inline-flex min-w-0 items-center gap-1">
-                        <MapPin className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                        <span className="truncate" title={job.location}>{job.location}</span>
-                      </span>
-                    ) : (
-                      "--"
-                    )}
-                  </td>
-                  <td className="px-6 py-4 text-sm text-gray-500 capitalize">
-                    {/* #32 — show remote policy next to employment type. */}
-                    <span className="block">{enumLabel(t, "employmentType", job.employment_type)}</span>
-                    {(job as any).remote_policy && (
-                      <span className="mt-0.5 inline-flex items-center rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-600 capitalize">
-                        {enumLabel(t, "remotePolicy", (job as any).remote_policy)}
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-6 py-4">
-                    <span
-                      className={cn(
-                        "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium",
-                        (job as any).is_internal
-                          ? "bg-amber-100 text-amber-800"
-                          : "bg-green-100 text-green-800",
-                      )}
-                    >
-                      {(job as any).is_internal ? t("jobs.list.internal") : t("jobs.list.public")}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span
-                      className={cn(
-                        "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium capitalize",
-                        STATUS_BADGE[job.status] ?? "bg-gray-100 text-gray-700",
-                      )}
-                    >
-                      {enumLabel(t, "jobStatus", job.status)}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-sm text-gray-500">{formatDate(job.created_at)}</td>
-                  <td className="px-6 py-4 text-right">
-                    <Link to={`/jobs/${job.id}`} aria-label={`${t("jobs.list.colTitle")}: ${job.title}`} className="inline-flex rounded-lg p-2 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500">
-                      <ChevronRight className="h-5 w-5" aria-hidden="true" />
-                    </Link>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        </>
+        <Card className="overflow-hidden">
+          <Table><TableHeader className="bg-gray-50"><TableRow className="hover:bg-gray-50">
+            <TableHead className="w-12"><input type="checkbox" checked={allSelected} onChange={toggleAll} aria-label={t("jobs.list.selectAll")} /></TableHead>
+            {["colTitle", "colDepartment", "colLocation", "colType", "colVisibility", "colStatus", "colCreated", "colActions"].map((key) => <TableHead key={key}>{t(`jobs.list.${key}`)}</TableHead>)}
+          </TableRow></TableHeader><TableBody>{jobs.map((job) => <TableRow key={job.id}>
+            <TableCell><input type="checkbox" checked={selected.has(job.id)} onChange={() => toggleOne(job.id)} aria-label={t("jobs.list.selectJob", { title: job.title })} /></TableCell>
+            <TableCell className="whitespace-nowrap"><Link to={`/jobs/${job.id}`} className="text-sm font-semibold text-gray-900 hover:text-brand-600">{job.title}</Link></TableCell>
+            <TableCell className="whitespace-nowrap text-sm text-gray-500">{job.department || "—"}</TableCell>
+            <TableCell className="whitespace-nowrap text-sm text-gray-500"><span className="inline-flex items-center gap-1"><MapPin className="h-3.5 w-3.5" />{job.location || "—"}</span></TableCell>
+            <TableCell className="whitespace-nowrap text-sm text-gray-500">{enumLabel(t, "employmentType", job.employment_type)} {(job as any).remote_policy && <Badge variant="secondary" className="ml-1 text-[10px]">{enumLabel(t, "remotePolicy", (job as any).remote_policy)}</Badge>}</TableCell>
+            <TableCell><Badge className={cn("border-0", (job as any).is_internal ? "bg-amber-100 text-amber-800" : "bg-green-100 text-green-800")}>{(job as any).is_internal ? t("jobs.list.internal") : t("jobs.list.public")}</Badge></TableCell>
+            <TableCell><Badge className={cn("border-0", STATUS_BADGE[job.status] ?? "bg-gray-100 text-gray-700")}>{enumLabel(t, "jobStatus", job.status)}</Badge></TableCell>
+            <TableCell className="whitespace-nowrap text-sm text-gray-500">{formatDate(job.created_at)}</TableCell>
+            <TableCell><div className="flex items-center justify-end gap-2"><Link to={`/jobs/${job.id}`} className="text-gray-400 hover:text-brand-600"><ChevronRight className="h-4 w-4" /></Link></div></TableCell>
+          </TableRow>)}</TableBody></Table>
+          <Pagination className="border-t border-gray-200 px-4 py-3" page={page} perPage={DEFAULT_PAGE_SIZE} total={total} onPageChange={(value) => setFilter("page", String(value))} />
+        </Card>
       )}
-
-      {/* Pagination */}
-      {!isLoading && jobs.length > 0 && (
-        <Pagination
-          page={page}
-          perPage={DEFAULT_PAGE_SIZE}
-          total={total}
-          onPageChange={(p) => setFilter("page", String(p))}
-        />
-      )}
+      {view === "grid" && !isLoading && jobs.length > 0 && <Pagination page={page} perPage={DEFAULT_PAGE_SIZE} total={total} onPageChange={(value) => setFilter("page", String(value))} />}
     </div>
   );
 }

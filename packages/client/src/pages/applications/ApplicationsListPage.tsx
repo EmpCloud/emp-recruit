@@ -1,409 +1,127 @@
-import { useState, useEffect } from "react";
-import { Link, useSearchParams } from "react-router-dom";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Loader2, FileText, Calendar, Search, X } from "lucide-react";
-import { apiGet, apiPost } from "@/api/client";
-import toast from "react-hot-toast";
+import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
+import {
+  ArrowDownUp, CalendarDays, ChevronDown, CircleX, FileText, Grid2X2,
+  List, Search, Sparkles, TimerReset, UsersRound, X,
+} from "lucide-react";
+import { apiGet } from "@/api/client";
 import { usePaginatedList } from "@/lib/usePaginatedList";
 import { Pagination, DEFAULT_PAGE_SIZE } from "@/components/Pagination";
 import { ExportButtons } from "@/components/ExportButtons";
 import { fetchAllRows, type ExportColumn } from "@/lib/export";
+import { Badge } from "@/components/ui/badge";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { PaginatedResponse, JobPosting } from "@emp-recruit/shared";
 import { cn, formatDate, getInitials } from "@/lib/utils";
 import { useTranslation } from "react-i18next";
 
 const STAGES = ["applied", "screened", "interview", "offer", "hired", "rejected", "withdrawn"];
-
 const STAGE_BADGE: Record<string, string> = {
-  applied: "bg-blue-100 text-blue-700",
-  screened: "bg-indigo-100 text-indigo-700",
-  interview: "bg-purple-100 text-purple-700",
-  offer: "bg-amber-100 text-amber-700",
-  hired: "bg-green-100 text-green-700",
-  rejected: "bg-red-100 text-red-700",
+  applied: "bg-blue-100 text-blue-700", screened: "bg-purple-100 text-purple-700",
+  interview: "bg-orange-100 text-orange-700", offer: "bg-amber-100 text-amber-700",
+  hired: "bg-green-100 text-green-700", rejected: "bg-red-100 text-red-700",
   withdrawn: "bg-gray-100 text-gray-700",
 };
+const AVATAR_TONES = ["bg-brand-100 text-brand-700", "bg-blue-100 text-blue-700", "bg-emerald-100 text-emerald-700", "bg-orange-100 text-orange-700"];
 
 interface AppRow {
   id: string;
   candidate_id: string;
   candidate_first_name: string;
   candidate_last_name: string;
+  candidate_email: string;
   job_id: string;
   job_title: string;
   job_department: string | null;
   stage: string;
   source: string;
+  rating: number | null;
   applied_at: string;
 }
+type ApplicationStats = { total: number; newThisWeek: number; inReview: number; interviewing: number; rejected: number };
 
 const APPLICATION_COLUMNS: ExportColumn<AppRow>[] = [
   { header: "Candidate", value: (a) => `${a.candidate_first_name} ${a.candidate_last_name}`.trim() },
-  { header: "Job", value: (a) => a.job_title },
-  { header: "Department", value: (a) => a.job_department },
-  { header: "Stage", value: (a) => a.stage },
-  { header: "Source", value: (a) => a.source },
-  { header: "Applied", value: (a) => (a.applied_at ? formatDate(a.applied_at) : "") },
+  { header: "Email", value: (a) => a.candidate_email }, { header: "Job", value: (a) => a.job_title },
+  { header: "Department", value: (a) => a.job_department }, { header: "Stage", value: (a) => a.stage },
+  { header: "Source", value: (a) => a.source }, { header: "Rating", value: (a) => a.rating },
+  { header: "Applied", value: (a) => a.applied_at ? formatDate(a.applied_at) : "" },
 ];
 
 export function ApplicationsListPage() {
   const { t } = useTranslation();
-  const [searchParams, setSearchParams] = useSearchParams();
-  const [stage, setStage] = useState(() => {
-    const requested = searchParams.get("stage") ?? "";
-    return STAGES.includes(requested) ? requested : "";
-  });
+  const [stage, setStage] = useState("");
   const [jobId, setJobId] = useState("");
   const [department, setDepartment] = useState("");
   const [location, setLocation] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
-  const initialSearch = searchParams.get("search") ?? "";
-  const [searchInput, setSearchInput] = useState(initialSearch);
-  const [search, setSearch] = useState(initialSearch);
+  const [searchInput, setSearchInput] = useState("");
+  const [search, setSearch] = useState("");
+  const [sort, setSort] = useState("applied_at");
+  const [order, setOrder] = useState("desc");
   const [page, setPage] = useState(1);
-
-  // Debounce the search box so we don't fire a request per keystroke.
-  useEffect(() => {
-    const t = setTimeout(() => {
-      const value = searchInput.trim();
-      setSearch(value);
-      setPage(1);
-      const next = new URLSearchParams(searchParams);
-      if (value) next.set("search", value); else next.delete("search");
-      next.delete("page");
-      setSearchParams(next, { replace: true });
-    }, 400);
-    return () => clearTimeout(t);
-  }, [searchInput]);
-
-  // Jobs power the "job role" dropdown and the department/location options.
-  const { data: jobsData } = useQuery({
-    queryKey: ["jobs-for-app-filter"],
-    queryFn: () => apiGet<PaginatedResponse<JobPosting>>("/jobs", { perPage: 100 }),
-  });
-  const jobs = jobsData?.data?.data ?? [];
-  const departments = Array.from(new Set(jobs.map((j) => j.department).filter(Boolean))).sort() as string[];
-  const locations = Array.from(new Set(jobs.map((j) => j.location).filter(Boolean))).sort() as string[];
-
-  const { rows, total, isLoading, isFetching } = usePaginatedList<AppRow>(
-    ["applications"],
-    "/applications",
-    {
-      sort: "applied_at",
-      order: "desc",
-      stage,
-      job_id: jobId,
-      department,
-      location,
-      date_from: dateFrom,
-      date_to: dateTo,
-      search,
-    },
-    page,
-  );
-
-  const filtersActive = Boolean(
-    stage || jobId || department || location || dateFrom || dateTo || search,
-  );
-
-  // Bulk stage updates: select rows, then move them all to a stage at once.
-  const queryClient = useQueryClient();
+  const [view, setView] = useState<"list" | "grid">("list");
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  function toggleSelected(id: string) {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
-  const bulkMutation = useMutation({
-    mutationFn: (targetStage: string) =>
-      apiPost("/applications/bulk-stage", { application_ids: [...selected], stage: targetStage }),
-    onSuccess: (res: any) => {
-      toast.success(t("applications.bulk.moved", { count: res?.data?.moved ?? selected.size }));
-      setSelected(new Set());
-      queryClient.invalidateQueries({ queryKey: ["applications"] });
-    },
-    onError: (err: any) =>
-      toast.error(err?.response?.data?.error?.message || t("applications.bulk.moveFailed")),
-  });
 
-  // Change a filter and reset to page 1.
-  function setFilter(setter: (v: string) => void) {
-    return (v: string) => {
-      setter(v);
-      setPage(1);
-    };
-  }
+  useEffect(() => { const timer = setTimeout(() => { setSearch(searchInput.trim()); setPage(1); }, 400); return () => clearTimeout(timer); }, [searchInput]);
+  const { data: jobsData } = useQuery({ queryKey: ["jobs-for-app-filter"], queryFn: () => apiGet<PaginatedResponse<JobPosting>>("/jobs", { perPage: 100 }) });
+  const statsQuery = useQuery({ queryKey: ["application-stats"], queryFn: async () => (await apiGet<ApplicationStats>("/applications/stats")).data });
+  const jobs = jobsData?.data?.data ?? [];
+  const departments = useMemo(() => Array.from(new Set(jobs.map((job) => job.department).filter(Boolean))).sort() as string[], [jobs]);
+  const locations = useMemo(() => Array.from(new Set(jobs.map((job) => job.location).filter(Boolean))).sort() as string[], [jobs]);
+  const { rows, total, isLoading } = usePaginatedList<AppRow>(["applications"], "/applications", { sort, order, stage, job_id: jobId, department, location, date_from: dateFrom, date_to: dateTo, search }, page);
+  const filtersActive = Boolean(stage || jobId || department || location || dateFrom || dateTo || search);
+  const setFilter = (setter: (value: string) => void) => (value: string) => { setter(value); setPage(1); };
+  const clearFilters = () => { setStage(""); setJobId(""); setDepartment(""); setLocation(""); setDateFrom(""); setDateTo(""); setSearchInput(""); setSearch(""); setPage(1); };
+  const allSelected = rows.length > 0 && rows.every((row) => selected.has(row.id));
+  const toggleAll = () => setSelected(allSelected ? new Set() : new Set(rows.map((row) => row.id)));
+  const toggleOne = (id: string) => setSelected((current) => { const next = new Set(current); next.has(id) ? next.delete(id) : next.add(id); return next; });
+  const stats = statsQuery.data;
+  const percentage = (value: number) => stats?.total ? `${Math.round((value / stats.total) * 100)}% of total` : t("applications.noActivity");
+  const statCards = [
+    { label: t("applications.totalApplications"), value: stats?.total ?? total, note: t("applications.allTime"), icon: FileText, tone: "bg-brand-600 text-white" },
+    { label: t("applications.newThisWeek"), value: stats?.newThisWeek ?? 0, note: t("applications.lastSevenDays"), icon: Sparkles, tone: "bg-blue-500 text-white" },
+    { label: t("applications.inReview"), value: stats?.inReview ?? 0, note: percentage(stats?.inReview ?? 0), icon: TimerReset, tone: "bg-purple-500 text-white" },
+    { label: t("applications.interviewing"), value: stats?.interviewing ?? 0, note: percentage(stats?.interviewing ?? 0), icon: UsersRound, tone: "bg-cyan-600 text-white" },
+    { label: t("applications.rejected"), value: stats?.rejected ?? 0, note: percentage(stats?.rejected ?? 0), icon: CircleX, tone: "bg-rose-500 text-white" },
+  ];
 
-  function clearFilters() {
-    setStage("");
-    setJobId("");
-    setDepartment("");
-    setLocation("");
-    setDateFrom("");
-    setDateTo("");
-    setSearchInput("");
-    setSearch("");
-    setPage(1);
-  }
+  const exportParams = { sort, order, stage, job_id: jobId, department, location, date_from: dateFrom, date_to: dateTo, search };
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">{t("applications.title")}</h1>
-          <p className="mt-1 text-sm text-gray-500">{t("applications.subtitle")}</p>
+    <div className="space-y-5 pb-4">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"><div><h1 className="text-2xl font-bold text-gray-900">{t("applications.title")}</h1><p className="mt-1 text-sm text-gray-500">{t("applications.subtitle")}</p></div><ExportButtons baseName="applications" title="Applications" subtitle={`${total} applications${filtersActive ? " (filtered)" : ""}`} columns={APPLICATION_COLUMNS} fetchRows={() => fetchAllRows<AppRow>("/applications", exportParams)} /></div>
+
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">{statCards.map(({ label, value, note, icon: Icon, tone }) => <Card key={label} className="relative overflow-hidden p-4"><div className="flex items-center gap-3"><span className={cn("flex h-11 w-11 shrink-0 items-center justify-center rounded-xl shadow-sm", tone)}><Icon className="h-5 w-5" /></span><div><p className="text-xs font-medium text-gray-500">{label}</p><p className="mt-0.5 text-2xl font-bold text-gray-900">{statsQuery.isLoading ? "—" : value}</p><p className="mt-0.5 text-xs text-gray-400">{note}</p></div></div><Icon className="absolute -bottom-2 -right-2 h-12 w-12 text-gray-100" /></Card>)}</div>
+
+      <Card className="p-3">
+        <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-[minmax(280px,2fr)_repeat(4,minmax(140px,1fr))]">
+          <label className="relative"><Search className="pointer-events-none absolute left-3 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-gray-400" /><Input value={searchInput} onChange={(event) => setSearchInput(event.target.value)} placeholder={t("applications.searchPlaceholder")} className="pl-9" /></label>
+          <Select value={jobId || "all"} onValueChange={(value) => setFilter(setJobId)(value === "all" ? "" : value)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">{t("applications.allJobs")}</SelectItem>{jobs.map((job) => <SelectItem key={job.id} value={job.id}>{job.title}</SelectItem>)}</SelectContent></Select>
+          <Select value={department || "all"} onValueChange={(value) => setFilter(setDepartment)(value === "all" ? "" : value)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">{t("applications.allDepartments")}</SelectItem>{departments.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent></Select>
+          <Select value={location || "all"} onValueChange={(value) => setFilter(setLocation)(value === "all" ? "" : value)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">{t("applications.allLocations")}</SelectItem>{locations.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent></Select>
+          <Select value={stage || "all"} onValueChange={(value) => setFilter(setStage)(value === "all" ? "" : value)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">{t("applications.allStages")}</SelectItem>{STAGES.map((item) => <SelectItem key={item} value={item}>{t(`applications.stages.${item}`)}</SelectItem>)}</SelectContent></Select>
         </div>
-        <ExportButtons
-          baseName="applications"
-          title={t("applications.title")}
-          subtitle={t(filtersActive ? "applications.countMatch" : "applications.count", { count: total })}
-          columns={APPLICATION_COLUMNS}
-          fetchRows={() =>
-            fetchAllRows<AppRow>("/applications", {
-              sort: "applied_at",
-              order: "desc",
-              stage,
-              job_id: jobId,
-              department,
-              location,
-              date_from: dateFrom,
-              date_to: dateTo,
-              search,
-            })
-          }
-        />
-      </div>
-
-      {/* Filters */}
-      <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
-          {/* Employee / job search */}
-          <div className="w-full flex-1 sm:min-w-[16rem]">
-            <label htmlFor="applications-search" className="mb-1 block text-xs font-medium text-gray-500">{t("applications.searchLabel")}</label>
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-              <input
-                type="text"
-                id="applications-search"
-                value={searchInput}
-                onChange={(e) => setSearchInput(e.target.value)}
-                placeholder={t("applications.searchPlaceholder")}
-                className="w-full rounded-lg border border-gray-300 py-2 pl-9 pr-3 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-              />
-            </div>
-          </div>
-
-          {/* Job role */}
-          <div>
-            <label htmlFor="applications-job" className="mb-1 block text-xs font-medium text-gray-500">{t("applications.jobRole")}</label>
-            <select
-              id="applications-job"
-              value={jobId}
-              onChange={(e) => setFilter(setJobId)(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 sm:w-44"
-            >
-              <option value="">{t("applications.allJobs")}</option>
-              {jobs.map((j) => (
-                <option key={j.id} value={j.id}>
-                  {j.title}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Department */}
-          <div>
-            <label htmlFor="applications-department" className="mb-1 block text-xs font-medium text-gray-500">{t("applications.department")}</label>
-            <select
-              id="applications-department"
-              value={department}
-              onChange={(e) => setFilter(setDepartment)(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 sm:w-40"
-            >
-              <option value="">{t("applications.allDepartments")}</option>
-              {departments.map((d) => (
-                <option key={d} value={d}>
-                  {d}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Location */}
-          <div>
-            <label htmlFor="applications-location" className="mb-1 block text-xs font-medium text-gray-500">{t("applications.location")}</label>
-            <select
-              id="applications-location"
-              value={location}
-              onChange={(e) => setFilter(setLocation)(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 sm:w-40"
-            >
-              <option value="">{t("applications.allLocations")}</option>
-              {locations.map((l) => (
-                <option key={l} value={l}>
-                  {l}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Stage */}
-          <div>
-            <label htmlFor="applications-stage" className="mb-1 block text-xs font-medium text-gray-500">{t("applications.stageLabel")}</label>
-            <select
-              id="applications-stage"
-              value={stage}
-              onChange={(e) => setFilter(setStage)(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 sm:w-36"
-            >
-              <option value="">{t("applications.allStages")}</option>
-              {STAGES.map((s) => (
-                <option key={s} value={s}>
-                  {t(`applications.stages.${s}`, s.charAt(0).toUpperCase() + s.slice(1))}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Date range */}
-          <div>
-            <label htmlFor="applications-from" className="mb-1 block text-xs font-medium text-gray-500">{t("applications.appliedFrom")}</label>
-            <input
-              id="applications-from"
-              type="date"
-              value={dateFrom}
-              max={dateTo || undefined}
-              onChange={(e) => setFilter(setDateFrom)(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 sm:w-40"
-            />
-          </div>
-          <div>
-            <label htmlFor="applications-to" className="mb-1 block text-xs font-medium text-gray-500">{t("applications.appliedTo")}</label>
-            <input
-              id="applications-to"
-              type="date"
-              value={dateTo}
-              min={dateFrom || undefined}
-              onChange={(e) => setFilter(setDateTo)(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 sm:w-40"
-            />
-          </div>
-
-          {filtersActive && (
-            <button
-              onClick={clearFilters}
-              className="inline-flex items-center justify-center gap-1 rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50"
-            >
-              <X className="h-4 w-4" /> {t("applications.clear")}
-            </button>
-          )}
+        <div className="mt-2 grid gap-2 md:grid-cols-2 xl:grid-cols-[180px_180px_220px_1fr_auto_auto] xl:items-end">
+          <label><span className="mb-1 block text-xs font-medium text-gray-500">{t("applications.appliedFrom")}</span><Input type="date" value={dateFrom} max={dateTo || undefined} onChange={(event) => setFilter(setDateFrom)(event.target.value)} /></label>
+          <label><span className="mb-1 block text-xs font-medium text-gray-500">{t("applications.appliedTo")}</span><Input type="date" value={dateTo} min={dateFrom || undefined} onChange={(event) => setFilter(setDateTo)(event.target.value)} /></label>
+          <div className="relative"><ArrowDownUp className="pointer-events-none absolute left-3 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-brand-500" /><Select value={`${sort}:${order}`} onValueChange={(value) => { const [field, direction] = value.split(":"); setSort(field); setOrder(direction); setPage(1); }}><SelectTrigger className="pl-9"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="applied_at:desc">{t("applications.sortRecent")}</SelectItem><SelectItem value="applied_at:asc">{t("applications.sortOldest")}</SelectItem><SelectItem value="rating:desc">{t("applications.sortRating")}</SelectItem></SelectContent></Select></div>
+          <div />
+          {filtersActive ? <Button variant="ghost" size="sm" onClick={clearFilters}><X className="h-4 w-4" />{t("applications.clear")}</Button> : <span />}
+          <div className="flex overflow-hidden rounded-lg border border-gray-300"><Button variant="ghost" size="icon" onClick={() => setView("list")} aria-label="List view" className={cn("rounded-none", view === "list" && "bg-brand-50 text-brand-600")}><List className="h-4 w-4" /></Button><Button variant="ghost" size="icon" onClick={() => setView("grid")} aria-label="Grid view" className={cn("rounded-none border-l border-gray-300", view === "grid" && "bg-brand-50 text-brand-600")}><Grid2X2 className="h-4 w-4" /></Button></div>
         </div>
-        <p className="mt-3 text-sm text-gray-500">
-          {filtersActive
-            ? t("applications.countMatch", { count: total })
-            : t("applications.count", { count: total })}
-        </p>
-      </div>
+      </Card>
 
-      {isLoading && isFetching ? (
-        <div className="flex h-32 items-center justify-center">
-          <Loader2 className="h-6 w-6 animate-spin text-brand-600" />
-        </div>
-      ) : rows.length === 0 ? (
-        <div className="rounded-xl border border-gray-200 bg-white p-12 text-center">
-          <FileText className="mx-auto h-12 w-12 text-gray-300" />
-          <p className="mt-3 text-sm text-gray-500">{t("applications.noApplications")}</p>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {selected.size > 0 && (
-            <div className="flex flex-wrap items-center gap-3 rounded-lg border border-brand-200 bg-brand-50 px-4 py-2">
-              <span className="text-sm font-medium text-brand-800">
-                {t("applications.bulk.selected", { count: selected.size })}
-              </span>
-              <select
-                value=""
-                onChange={(e) => {
-                  if (e.target.value) bulkMutation.mutate(e.target.value);
-                }}
-                disabled={bulkMutation.isPending}
-                className="rounded-lg border border-gray-300 px-2 py-1.5 text-sm focus:border-brand-500 focus:outline-none disabled:opacity-50"
-              >
-                <option value="">{t("applications.bulk.moveTo")}</option>
-                {STAGES.map((s) => (
-                  <option key={s} value={s}>
-                    {t(`applications.stage.${s}`, s)}
-                  </option>
-                ))}
-              </select>
-              {bulkMutation.isPending && <Loader2 className="h-4 w-4 animate-spin text-brand-600" />}
-              <button
-                type="button"
-                onClick={() => setSelected(new Set())}
-                className="text-sm text-gray-500 hover:text-gray-700"
-              >
-                {t("applications.bulk.clear")}
-              </button>
-            </div>
-          )}
-          {rows.map((app) => (
-            <div key={app.id} className="flex items-center gap-3">
-              <input
-                type="checkbox"
-                checked={selected.has(app.id)}
-                onChange={() => toggleSelected(app.id)}
-                className="h-4 w-4 flex-shrink-0 rounded border-gray-300"
-                aria-label={t("applications.bulk.selected", { count: 1 })}
-              />
-              <Link
-                to={`/applications/${app.id}`}
-                className="flex flex-1 items-center justify-between rounded-xl border border-gray-200 bg-white p-4 transition-colors hover:border-brand-200 hover:bg-gray-50"
-              >
-              <div className="flex min-w-0 flex-1 items-center gap-3">
-                <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-brand-50 text-sm font-semibold text-brand-700">
-                  {getInitials(`${app.candidate_first_name} ${app.candidate_last_name}`)}
-                </span>
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium text-gray-900">
-                    {app.candidate_first_name} {app.candidate_last_name}
-                  </p>
-                  <p className="truncate text-xs text-gray-500">
-                    {app.job_title}
-                    {app.job_department ? ` · ${app.job_department}` : ""}
-                  </p>
-                </div>
-              </div>
-              <div className="ml-4 flex flex-shrink-0 items-center gap-3">
-                <span
-                  className={cn(
-                    "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium capitalize",
-                    STAGE_BADGE[app.stage] ?? "bg-gray-100 text-gray-700",
-                  )}
-                >
-                  {t(`applications.stages.${app.stage}`, app.stage)}
-                </span>
-                <span className="hidden items-center gap-1 whitespace-nowrap text-xs text-gray-400 sm:inline-flex">
-                  <Calendar className="h-3 w-3" />
-                  {formatDate(app.applied_at)}
-                </span>
-              </div>
-              </Link>
-            </div>
-          ))}
-
-          {/* Pagination */}
-          <Pagination
-            page={page}
-            perPage={DEFAULT_PAGE_SIZE}
-            total={total}
-            onPageChange={setPage}
-          />
-        </div>
-      )}
+      {isLoading ? <div className="flex justify-center py-16"><div className="h-8 w-8 animate-spin rounded-full border-4 border-brand-600 border-t-transparent" /></div> : rows.length === 0 ? <Card className="border-dashed py-14 text-center"><span className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-50 text-brand-600"><FileText className="h-7 w-7" /></span><p className="mt-4 font-semibold text-gray-900">{t("applications.emptyTitle")}</p><p className="mt-1 text-sm text-gray-500">{filtersActive ? t("applications.emptyFiltered") : t("applications.noApplications")}</p>{filtersActive && <Button variant="outline" size="sm" onClick={clearFilters} className="mt-4"><X className="h-4 w-4" />{t("applications.clear")}</Button>}</Card> : view === "grid" ? (
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{rows.map((app, index) => <Card key={app.id} className="p-5 transition hover:-translate-y-0.5 hover:shadow-md"><div className="flex items-start justify-between gap-3"><Link to={`/candidates/${app.candidate_id}`} className="flex min-w-0 items-center gap-3"><span className={cn("flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-sm font-semibold", AVATAR_TONES[index % AVATAR_TONES.length])}>{getInitials(`${app.candidate_first_name} ${app.candidate_last_name}`)}</span><span className="min-w-0"><span className="block truncate font-semibold text-gray-900">{app.candidate_first_name} {app.candidate_last_name}</span><span className="block truncate text-xs text-gray-500">{app.candidate_email}</span></span></Link><Badge className={cn("border-0", STAGE_BADGE[app.stage])}>{t(`applications.stages.${app.stage}`)}</Badge></div><div className="mt-4 border-t border-gray-100 pt-4"><p className="font-medium text-gray-900">{app.job_title}</p><p className="mt-1 text-xs text-gray-500">{app.job_department || "—"}</p><p className="mt-3 flex items-center gap-1.5 text-xs text-gray-400"><CalendarDays className="h-3.5 w-3.5" />{formatDate(app.applied_at)}</p></div></Card>)}</div>
+      ) : <Card className="overflow-hidden"><Table><TableHeader className="bg-gray-50"><TableRow className="hover:bg-gray-50"><TableHead className="w-12"><input type="checkbox" checked={allSelected} onChange={toggleAll} aria-label={t("applications.selectAll")} /></TableHead>{["candidate", "role", "department", "stageLabel", "source", "rating", "appliedDate", "actions"].map((key) => <TableHead key={key}>{t(`applications.${key}`)}</TableHead>)}</TableRow></TableHeader><TableBody>{rows.map((app, index) => <TableRow key={app.id}><TableCell><input type="checkbox" checked={selected.has(app.id)} onChange={() => toggleOne(app.id)} aria-label={`${app.candidate_first_name} ${app.candidate_last_name}`} /></TableCell><TableCell><Link to={`/candidates/${app.candidate_id}`} className="flex min-w-[190px] items-center gap-3"><span className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-semibold", AVATAR_TONES[index % AVATAR_TONES.length])}>{getInitials(`${app.candidate_first_name} ${app.candidate_last_name}`)}</span><span><span className="block font-semibold text-gray-900 hover:text-brand-600">{app.candidate_first_name} {app.candidate_last_name}</span><span className="block text-xs text-gray-500">{app.candidate_email}</span></span></Link></TableCell><TableCell className="min-w-[180px] font-medium text-gray-700">{app.job_title}</TableCell><TableCell className="whitespace-nowrap text-gray-500">{app.job_department || "—"}</TableCell><TableCell><Badge className={cn("border-0", STAGE_BADGE[app.stage] ?? STAGE_BADGE.withdrawn)}><span className="mr-1 h-1.5 w-1.5 rounded-full bg-current" />{t(`applications.stages.${app.stage}`)}</Badge></TableCell><TableCell><Badge variant="secondary" className="capitalize">{app.source || "—"}</Badge></TableCell><TableCell className="whitespace-nowrap text-gray-500">{app.rating ? `${app.rating}/5` : "—"}</TableCell><TableCell className="whitespace-nowrap text-gray-500">{formatDate(app.applied_at)}</TableCell><TableCell><div className="flex justify-end gap-1"><Link to={`/candidates/${app.candidate_id}`} className={cn(buttonVariants({ variant: "outline", size: "sm" }), "h-8")}>{t("applications.view")}<ChevronDown className="h-3.5 w-3.5" /></Link></div></TableCell></TableRow>)}</TableBody></Table><Pagination className="border-t border-gray-200 px-4 py-3" page={page} perPage={DEFAULT_PAGE_SIZE} total={total} onPageChange={setPage} /></Card>}
+      {view === "grid" && !isLoading && rows.length > 0 && <Pagination page={page} perPage={DEFAULT_PAGE_SIZE} total={total} onPageChange={setPage} />}
     </div>
   );
 }

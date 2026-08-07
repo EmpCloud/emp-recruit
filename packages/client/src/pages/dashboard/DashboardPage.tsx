@@ -22,9 +22,8 @@ import { apiGet, apiPost } from "@/api/client";
 import { getUser } from "@/lib/auth-store";
 import { canAccessRecruit } from "@/lib/roles";
 import type { PaginatedResponse } from "@emp-recruit/shared";
-import { cn, formatDate, formatTime } from "@/lib/utils";
+import { cn, formatDate } from "@/lib/utils";
 import { usePipelineStages, stageColor } from "@/lib/pipeline-stages";
-import { enumLabel } from "@/lib/enums";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -56,15 +55,7 @@ interface StatCardsResponse {
 interface DashboardInterview {
   id: string;
   scheduled_at: string;
-  title?: string;
-  candidate_name?: string;
-  status?: string;
-  panelist_count?: number;
-  panelist_names?: string[];
-  round?: number;
 }
-interface RecruiterMetric { user_id: number; user_name?: string | null; function: string; applications: number; hires: number; conversion_rate: number; sla_breaches: number; }
-interface SourceMetric { source: string; total: number; hired: number; hireRate: number; }
 
 // Staff who get the recruiting overview: an admin role OR a user granted recruit
 // access via an EmpCloud custom role (recruit:* permission). A plain `employee`
@@ -101,7 +92,7 @@ function AdminDashboard() {
   });
 
   // Fetch recent applications
-  const { data: appsData, isLoading: appsLoading } = useQuery({
+  const { data: appsData } = useQuery({
     queryKey: ["dashboard-applications"],
     queryFn: () => apiGet<PaginatedResponse<any>>("/applications", { perPage: 10, sort: "applied_at", order: "desc" }),
   });
@@ -112,10 +103,6 @@ function AdminDashboard() {
   const { data: rejectedData } = useQuery({
     queryKey: ["dashboard-pipeline-rejected"],
     queryFn: () => apiGet<PaginatedResponse<any>>("/applications", { stage: "rejected", perPage: 1 }),
-  });
-  const { data: hiredData } = useQuery({
-    queryKey: ["dashboard-pipeline-hired"],
-    queryFn: () => apiGet<PaginatedResponse<any>>("/applications", { stage: "hired", perPage: 1 }),
   });
 
   const { data: pendingOffersData } = useQuery({
@@ -129,16 +116,6 @@ function AdminDashboard() {
       status: "scheduled", limit: 100, sort_field: "scheduled_at", sort_order: "asc",
     }),
   });
-  const { data: recruiterMetricsRes } = useQuery({
-    queryKey: ["dashboard-recruiter-performance"],
-    queryFn: () => apiGet<RecruiterMetric[]>("/recruitment-ops/recruiter-performance"),
-  });
-  const recruiterMetrics = recruiterMetricsRes?.data ?? [];
-  const { data: sourceMetricsRes } = useQuery({
-    queryKey: ["dashboard-source-effectiveness"],
-    queryFn: () => apiGet<SourceMetric[]>("/analytics/sources"),
-  });
-  const sourceMetrics = sourceMetricsRes?.data ?? [];
 
   // Conversion funnel — cumulative reach per stage. Replaces the six
   // per-stage perPage=1 count queries the old bar list fired: those returned
@@ -154,9 +131,7 @@ function AdminDashboard() {
   const recentApps = appsData?.data?.data ?? [];
   const pipelineDisplayStages: FunnelStageDatum[] = funnel
     ? [
-        ...funnel.stages.filter((stage) => stage.stage !== "rejected").map((stage) =>
-          stage.stage === "hired" ? { ...stage, reached: hiredData?.data?.total ?? 0 } : stage,
-        ),
+        ...funnel.stages.filter((stage) => stage.stage !== "rejected"),
         {
           stage: "rejected",
           reached: rejectedData?.data?.total ?? 0,
@@ -247,30 +222,26 @@ function AdminDashboard() {
   ];
 
   return (
-    <div className="mx-auto w-full max-w-[1500px] space-y-5 sm:space-y-6">
+    <div className="space-y-6">
       {/* Header. Same layout and same primary-button treatment as the Job
           Postings header, and it reuses that page's `jobs.list.createJob` label
           so the two can never drift apart or be translated differently. */}
-      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#111a35] via-[#18244a] to-brand-900 px-5 py-7 text-white shadow-xl sm:px-7 sm:py-8 lg:px-9">
-        <div className="absolute -right-20 -top-24 h-72 w-72 rounded-full bg-brand-400/20 blur-3xl" aria-hidden="true" />
-        <div className="relative flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
-        <div className="max-w-2xl">
-          <p className="mb-2 text-xs font-bold uppercase tracking-[0.16em] text-brand-200">Recruitment overview</p>
-          <h1 className="text-pretty text-3xl font-bold tracking-[-0.04em] sm:text-4xl">{t("dashboard.title")}</h1>
-          <p className="mt-3 max-w-xl text-sm leading-6 text-slate-300 sm:text-base">{t("dashboard.subtitle")}</p>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">{t("dashboard.title")}</h1>
+          <p className="mt-1 text-sm text-gray-500">{t("dashboard.subtitle")}</p>
         </div>
         <Link
           to="/jobs/new"
-          className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 self-start rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-brand-800 shadow-sm transition-[background-color,box-shadow,transform] hover:-translate-y-0.5 hover:bg-brand-50 hover:shadow-md sm:self-auto"
+          className="inline-flex shrink-0 items-center gap-2 self-start rounded-lg bg-brand-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-brand-700 sm:self-auto"
         >
           <Plus className="h-4 w-4" aria-hidden="true" />
           {t("jobs.list.createJob")}
         </Link>
-        </div>
       </div>
 
       {/* KPI row */}
-      <div className="grid grid-cols-1 gap-3 min-[430px]:grid-cols-2 sm:gap-4 lg:grid-cols-3 xl:grid-cols-5">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5">
         {statCards.map((stat) => (
           <StatCard
             key={stat.label}
@@ -288,16 +259,16 @@ function AdminDashboard() {
       {/* Peer cards. `items-start` stops the grid stretching every card to
           the tallest one — the insight card is naturally short, and stretched it
           would be mostly empty space below its button. */}
-      <div className="grid grid-cols-1 items-stretch gap-5 xl:grid-cols-3">
+      <div className="grid grid-cols-1 items-stretch gap-6 lg:grid-cols-3">
         {/* Hiring funnel — cumulative reach per stage */}
-        <Card className="h-full overflow-hidden rounded-2xl xl:col-span-3">
-          <CardHeader className="flex-col items-start gap-3 space-y-0 border-b border-gray-100 pb-5 min-[430px]:flex-row min-[430px]:items-center min-[430px]:justify-between">
+        <Card className="h-full lg:col-span-3">
+          <CardHeader className="flex-row items-center justify-between space-y-0 pb-5">
             <CardTitle>{t("dashboard.pipelineDistribution")}</CardTitle>
             <Badge variant="secondary">
               {t("dashboard.totalCount", { count: funnel?.stages?.[0]?.reached ?? 0 })}
             </Badge>
           </CardHeader>
-          <CardContent className="p-3 sm:p-6">
+          <CardContent>
             {funnelLoading ? (
               <Skeleton className="h-32 w-full" />
             ) : funnel && pipelineDisplayStages.some((s) => s.reached > 0) ? (
@@ -314,8 +285,8 @@ function AdminDashboard() {
         </Card>
 
         {/* Recent Applications */}
-        <Card className="flex h-full flex-col rounded-2xl">
-          <CardHeader className="flex-row flex-wrap items-center justify-between gap-2 space-y-0 pb-4">
+        <Card className="flex h-full flex-col">
+          <CardHeader className="flex-row items-center justify-between space-y-0 pb-4">
             <CardTitle>{t("dashboard.recentApplications")}</CardTitle>
             <Link
               to="/applications"
@@ -325,13 +296,7 @@ function AdminDashboard() {
             </Link>
           </CardHeader>
           <CardContent className="flex-1">
-          {appsLoading ? (
-            <div className="space-y-3" aria-label={t("dashboard.loading")}>
-              {[0, 1, 2].map((row) => (
-                <div key={row} className="h-16 animate-pulse rounded-xl bg-gray-100" />
-              ))}
-            </div>
-          ) : recentApps.length === 0 ? (
+          {recentApps.length === 0 ? (
             <p className="py-8 text-center text-sm text-gray-500">{t("dashboard.noApplications")}</p>
           ) : (
             // Ten rows fetched, five in view: the container is capped at five
@@ -352,7 +317,7 @@ function AdminDashboard() {
                 <Link
                   key={app.id}
                   to={app.candidate_id ? `/candidates/${app.candidate_id}` : `/jobs/${app.job_id}`}
-                  className="flex flex-col gap-3 rounded-xl border border-gray-100 p-3 transition-colors hover:border-brand-200 hover:bg-gray-50 sm:flex-row sm:items-center sm:justify-between"
+                  className="flex items-center justify-between rounded-lg border border-gray-100 p-3 transition-colors hover:border-brand-200 hover:bg-gray-50"
                 >
                   <div className="flex min-w-0 flex-1 items-center gap-3">
                     <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-brand-50 text-xs font-semibold text-brand-700">
@@ -365,7 +330,7 @@ function AdminDashboard() {
                       <p className="truncate text-xs text-gray-500">{app.job_title}</p>
                     </div>
                   </div>
-                  <div className="flex w-full items-center justify-between gap-3 sm:ml-4 sm:w-auto sm:justify-end">
+                  <div className="flex items-center gap-3 ml-4">
                     <span
                       className="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize"
                       style={{
@@ -387,7 +352,7 @@ function AdminDashboard() {
           </CardContent>
         </Card>
 
-        <Card className="flex h-full flex-col rounded-2xl">
+        <Card className="flex h-full flex-col">
           <CardHeader className="pb-4">
             <CardTitle>{t("dashboard.actionCenter.title")}</CardTitle>
           </CardHeader>
@@ -396,7 +361,7 @@ function AdminDashboard() {
               <Link
                 key={item.to}
                 to={item.to}
-                className={cn("group flex flex-1 items-center gap-3 rounded-xl border p-3 transition-[transform,box-shadow,border-color,background-color] hover:-translate-y-0.5 hover:shadow-sm", item.tone)}
+                className={cn("group flex flex-1 items-center gap-3 rounded-xl border p-3 transition-all hover:-translate-y-0.5 hover:shadow-sm", item.tone)}
               >
                 <span className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white shadow-sm", item.iconTone)}>
                   <item.icon className="h-5 w-5" aria-hidden="true" />
@@ -419,16 +384,6 @@ function AdminDashboard() {
           <AiInsights />
         </div>
       </div>
-
-      {recruiterMetrics.length > 0 && <Card className="overflow-hidden rounded-2xl">
-        <CardHeader className="flex-col items-start gap-3 border-b border-gray-100 min-[430px]:flex-row min-[430px]:items-center min-[430px]:justify-between"><CardTitle>Recruiter &amp; Sourcing Performance</CardTitle><Link className="text-sm font-semibold text-brand-600 hover:text-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500" to="/recruitment-operations">Manage Operations</Link></CardHeader>
-        <CardContent className="p-0"><div className="overflow-x-auto"><table className="w-full min-w-[680px] text-left text-sm"><thead className="bg-gray-50 text-xs uppercase tracking-wide text-gray-500"><tr>{["User", "Team", "Applicants", "Hires", "Conversion", "SLA breaches"].map((heading) => <th key={heading} className="px-5 py-3 font-semibold">{heading}</th>)}</tr></thead><tbody className="divide-y divide-gray-100">{recruiterMetrics.slice(0, 8).map((metric) => <tr className="transition-colors hover:bg-gray-50" key={metric.user_id}><td className="px-5 py-4 font-semibold">{metric.user_name || metric.user_id}</td><td className="px-5 py-4">{metric.function}</td><td className="px-5 py-4 tabular-nums">{metric.applications}</td><td className="px-5 py-4 tabular-nums">{metric.hires}</td><td className="px-5 py-4 font-semibold tabular-nums">{metric.conversion_rate}%</td><td className="px-5 py-4 tabular-nums">{metric.sla_breaches}</td></tr>)}</tbody></table></div></CardContent>
-      </Card>}
-
-      <Card className="overflow-hidden rounded-2xl">
-        <CardHeader className="flex-row items-center justify-between border-b border-gray-100"><CardTitle>Applicant Source Performance</CardTitle><Link className="text-sm font-semibold text-brand-600 hover:text-brand-700" to="/analytics">Full analytics</Link></CardHeader>
-        <CardContent className="p-0"><div className="overflow-x-auto"><table className="w-full min-w-[560px] text-left text-sm"><thead className="bg-gray-50 text-xs uppercase tracking-wide text-gray-500"><tr>{["Source", "Applicants", "Hires", "Hire rate"].map((heading) => <th key={heading} className="px-5 py-3 font-semibold">{heading}</th>)}</tr></thead><tbody className="divide-y divide-gray-100">{sourceMetrics.length ? sourceMetrics.map((metric) => <tr key={metric.source}><td className="px-5 py-4 font-semibold">{metric.source === "linkedin" ? "LinkedIn" : metric.source.charAt(0).toUpperCase() + metric.source.slice(1)}</td><td className="px-5 py-4 tabular-nums">{metric.total}</td><td className="px-5 py-4 tabular-nums">{metric.hired}</td><td className="px-5 py-4 font-semibold tabular-nums">{metric.hireRate}%</td></tr>) : <tr><td colSpan={4} className="px-5 py-8 text-center text-gray-500">No applicant source data is available yet.</td></tr>}</tbody></table></div></CardContent>
-      </Card>
     </div>
   );
 }
@@ -477,11 +432,6 @@ function EmployeeDashboard() {
       return res.data;
     },
   });
-  const { data: assignedInterviewsRes } = useQuery({
-    queryKey: ["my-panelist-interviews"],
-    queryFn: () => apiGet<PaginatedResponse<DashboardInterview>>("/interviews", { limit: 10, sort_field: "scheduled_at", sort_order: "asc" }),
-  });
-  const assignedInterviews = assignedInterviewsRes?.data?.data ?? [];
 
   // Offers waiting on MY approval (BUG-012). Self-scoped endpoint — regular
   // employees only ever see offers where they hold a pending approver row.
@@ -522,20 +472,16 @@ function EmployeeDashboard() {
   ];
 
   return (
-    <div className="mx-auto w-full max-w-[1500px] space-y-5 sm:space-y-6">
-      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#111a35] via-[#18244a] to-brand-900 px-5 py-7 text-white shadow-xl sm:px-8 sm:py-9">
-        <div className="absolute -right-16 -top-20 h-64 w-64 rounded-full bg-brand-400/20 blur-3xl" aria-hidden="true" />
-        <div className="relative max-w-2xl">
-        <p className="mb-2 text-xs font-bold uppercase tracking-[0.16em] text-brand-200">{t("dashboard.welcome", { name: firstName })}</p>
-        <h1 className="text-pretty text-3xl font-bold tracking-[-0.04em] sm:text-4xl">{t("dashboard.title")}</h1>
-        <p className="mt-3 text-sm leading-6 text-slate-300 sm:text-base">
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900">{t("dashboard.welcome", { name: firstName })}</h1>
+        <p className="mt-1 text-sm text-gray-500">
           {t("dashboard.employeeSubtitle")}
         </p>
-        </div>
       </div>
 
       {/* Referral stat cards — clickable, deep-link to the filtered list */}
-      <div className="grid grid-cols-1 gap-3 min-[430px]:grid-cols-2 sm:gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         {stats.map((stat) => (
           <StatCard
             key={stat.label}
@@ -552,7 +498,7 @@ function EmployeeDashboard() {
       {/* Offers awaiting my approval (BUG-012) — only rendered when the
           current user has pending approver rows. */}
       {pendingApprovals.length > 0 && (
-        <div className="rounded-2xl border border-amber-200 bg-white p-4 shadow-sm sm:p-6">
+        <div className="rounded-xl border border-amber-200 bg-white p-6 shadow-sm">
           <div className="mb-4 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <h2 className="text-lg font-semibold text-gray-900">
@@ -567,7 +513,7 @@ function EmployeeDashboard() {
             {pendingApprovals.map((offer) => (
               <div
                 key={offer.id}
-                className="flex flex-col items-stretch justify-between gap-3 rounded-xl border border-gray-100 p-4 sm:flex-row sm:items-center"
+                className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-gray-100 p-4"
               >
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium text-gray-900">{offer.candidate_name}</p>
@@ -578,7 +524,7 @@ function EmployeeDashboard() {
                       : ""}
                   </p>
                 </div>
-                <div className="grid shrink-0 grid-cols-2 gap-2 sm:flex sm:items-center">
+                <div className="flex shrink-0 items-center gap-2">
                   <button
                     onClick={() => actOnOffer.mutate({ id: offer.id, action: "approve" })}
                     disabled={actOnOffer.isPending}
@@ -606,7 +552,7 @@ function EmployeeDashboard() {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Link
           to="/referrals"
-          className="group flex items-center justify-between rounded-2xl border border-gray-200 bg-white p-4 shadow-sm transition-[transform,border-color,box-shadow] hover:-translate-y-0.5 hover:border-brand-300 hover:shadow-md sm:p-5"
+          className="group flex items-center justify-between rounded-xl border border-gray-200 bg-white p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:border-brand-300 hover:shadow-md"
         >
           <div className="flex items-center gap-3">
             <div className="rounded-xl bg-purple-50 p-3 text-purple-600">
@@ -622,13 +568,7 @@ function EmployeeDashboard() {
       </div>
 
       {/* My recent referrals */}
-      {assignedInterviews.length > 0 && <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6">
-        <div className="mb-4 flex items-center justify-between"><h2 className="text-lg font-semibold text-gray-900">My assigned interviews</h2><Link to="/interviews" className="text-sm text-brand-600">View all</Link></div>
-        <div className="space-y-3">{assignedInterviews.map((interview) => <Link key={interview.id} to={`/interviews/${interview.id}`} className="flex flex-col gap-2 rounded-xl border border-gray-100 p-3 hover:border-brand-300 sm:flex-row sm:items-center sm:justify-between"><div className="min-w-0"><p className="truncate text-sm font-medium text-gray-900">{interview.title || "Interview"}</p><p className="truncate text-xs text-gray-500">{interview.candidate_name || "Candidate"}</p><p className="truncate text-xs text-gray-500">Panelists ({interview.panelist_count || 0}): {interview.panelist_names?.join(", ") || "None assigned"}</p><p className="text-xs text-gray-500">Round {interview.round || 1} · {interview.status ? enumLabel(t, "interviewStatus", interview.status) : "Scheduled"}</p></div><span className="shrink-0 text-xs font-medium text-brand-600">View details · {formatDate(interview.scheduled_at)} at {formatTime(interview.scheduled_at)}</span></Link>)}</div>
-      </div>}
-
-      {/* My recent referrals */}
-      <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6">
+      <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-lg font-semibold text-gray-900">{t("dashboard.myReferralsTitle")}</h2>
           <Link
@@ -657,13 +597,13 @@ function EmployeeDashboard() {
             {referrals.slice(0, 5).map((ref) => (
               <div
                 key={ref.id}
-                className="flex flex-col gap-3 rounded-xl border border-gray-100 p-3 sm:flex-row sm:items-center sm:justify-between"
+                className="flex items-center justify-between rounded-lg border border-gray-100 p-3"
               >
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium text-gray-900">{ref.candidate_name}</p>
                   <p className="truncate text-xs text-gray-500">{ref.job_title}</p>
                 </div>
-                <div className="flex items-center justify-between gap-3 sm:ml-4 sm:justify-end">
+                <div className="ml-4 flex items-center gap-3">
                   <span
                     className={cn(
                       "inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium capitalize",

@@ -33,6 +33,9 @@ router.get("/", async (req: Request, res: Response, next: NextFunction) => {
       search: query.search,
       sort: query.sort,
       order: query.order,
+      source: typeof req.query.source === "string" ? req.query.source : undefined,
+      experience: typeof req.query.experience === "string" ? req.query.experience : undefined,
+      stage: typeof req.query.stage === "string" ? req.query.stage : undefined,
     });
 
     return sendPaginated(res, result.data, result.total, result.page, result.perPage);
@@ -42,6 +45,16 @@ router.get("/", async (req: Request, res: Response, next: NextFunction) => {
 });
 
 // POST / — create candidate
+// GET /stats — candidate summary cards
+router.get("/stats", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const stats = await candidateService.getCandidateStats(req.user!.empcloudOrgId);
+    return sendSuccess(res, stats);
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.post("/", async (req: Request, res: Response, next: NextFunction) => {
   try {
     const data = createCandidateSchema.parse(req.body);

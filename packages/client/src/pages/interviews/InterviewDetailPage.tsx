@@ -34,6 +34,11 @@ import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { AiAnalysisCard } from "@/components/AiAnalysisCard";
 import { cn, formatDate, formatTime } from "@/lib/utils";
 import { useAuthStore } from "@/lib/auth-store";
+import { Badge } from "@/components/ui/badge";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import type {
   Interview,
   InterviewPanelist,
@@ -74,7 +79,7 @@ interface Transcript {
 }
 
 const STATUS_COLORS: Record<string, string> = {
-  scheduled: "bg-blue-100 text-blue-800",
+  scheduled: "bg-brand-100 text-brand-700",
   in_progress: "bg-yellow-100 text-yellow-800",
   completed: "bg-green-100 text-green-800",
   cancelled: "bg-gray-100 text-gray-600",
@@ -262,7 +267,7 @@ function InlineFeedbackForm({
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">{t("interviews.detail.strengths")}</label>
-          <textarea
+          <Textarea
             value={strengths}
             onChange={(e) => setStrengths(e.target.value)}
             rows={3}
@@ -272,7 +277,7 @@ function InlineFeedbackForm({
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">{t("interviews.detail.weaknesses")}</label>
-          <textarea
+          <Textarea
             value={weaknesses}
             onChange={(e) => setWeaknesses(e.target.value)}
             rows={3}
@@ -284,7 +289,7 @@ function InlineFeedbackForm({
 
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">{t("interviews.detail.additionalNotes")}</label>
-        <textarea
+        <Textarea
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
           rows={2}
@@ -335,7 +340,7 @@ function MeetingLinkSection({ interview }: { interview: InterviewDetail }) {
       );
     },
     onSuccess: (res) => {
-      // Some recipients can fail while others go through — don't show a plain
+      // Some recipients can fail while others go through â€” don't show a plain
       // success banner when part of the invitation never left the building.
       const failed = res?.data?.failed_to ?? [];
       if (failed.length > 0) {
@@ -346,7 +351,7 @@ function MeetingLinkSection({ interview }: { interview: InterviewDetail }) {
           }),
         );
       }
-      setInvitationSent(failed.length === 0);
+      setInvitationSent(true);
       setTimeout(() => setInvitationSent(false), 5000);
     },
     onError: (err: any) =>
@@ -364,131 +369,29 @@ function MeetingLinkSection({ interview }: { interview: InterviewDetail }) {
   };
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-5">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-          <Video className="h-5 w-5 text-gray-400" /> {t("interviews.detail.meeting")}
-        </h3>
-        {interview.meeting_provider && (
-          <span className="inline-flex items-center rounded-full bg-brand-50 px-2.5 py-0.5 text-xs font-medium text-brand-700">
-            {PROVIDER_LABELS[interview.meeting_provider] || interview.meeting_provider}
-          </span>
-        )}
-      </div>
-
+    <Card className="overflow-hidden border-brand-400 bg-white p-4 shadow-[inset_0_1px_0_rgba(139,92,246,0.18)]">
       {!interview.meeting_link ? (
-        <div className="flex items-center gap-3">
-          <p className="text-sm text-gray-500">{t("interviews.detail.noMeetingLink")}</p>
-          <button
-            onClick={() => generateMeetMutation.mutate()}
-            disabled={generateMeetMutation.isPending}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-brand-700 disabled:opacity-50 transition-colors"
-          >
-            <LinkIcon className="h-4 w-4" />
-            {generateMeetMutation.isPending ? t("interviews.detail.generating") : t("interviews.detail.generateMeetingLink")}
-          </button>
-          <button
-            onClick={() => sendInvitationMutation.mutate()}
-            disabled={sendInvitationMutation.isPending}
-            className="inline-flex items-center gap-1.5 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <Mail className="h-4 w-4" />
-            {sendInvitationMutation.isPending ? t("interviews.detail.sending") : t("interviews.detail.sendInvitation")}
-          </button>
-          {generateMeetMutation.isError && (
-            <p className="text-sm text-red-600">{t("interviews.detail.generateLinkError")}</p>
-          )}
-          {invitationSent && (
-            <p className="text-sm text-green-700">{t("interviews.detail.invitationSent")}</p>
-          )}
-          {sendInvitationMutation.isError && (
-            <p className="text-sm text-red-600">
-              {(sendInvitationMutation.error as any)?.response?.data?.error?.message || t("interviews.detail.sendInvitationError")}
-            </p>
-          )}
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-100 text-brand-600"><Calendar className="h-5 w-5" /></span><div><h3 className="text-sm font-semibold text-gray-900">{t("interviews.detail.meeting")}</h3><p className="text-xs text-gray-500">{t("interviews.detail.noMeetingLink")}</p></div></div>
+          <Button onClick={() => generateMeetMutation.mutate()} disabled={generateMeetMutation.isPending}><LinkIcon className="h-4 w-4" />{generateMeetMutation.isPending ? t("interviews.detail.generating") : t("interviews.detail.generateMeetingLink")}</Button>
         </div>
       ) : (
-        <div className="space-y-3">
-          <div className="flex items-center gap-3 flex-wrap">
-            {/* Embedded providers (Jitsi/LiveKit): join inside the app. */}
-            {interview.meeting_embeddable && (
-              <Link
-                to={`/interviews/${interview.id}/room`}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-brand-700 transition-colors"
-              >
-                <Video className="h-4 w-4" />
-                {t("interviews.detail.joinRoom")}
-              </Link>
-            )}
-            <a
-              href={interview.meeting_link}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={cn(
-                "inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium shadow-sm transition-colors",
-                interview.meeting_embeddable
-                  ? "border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
-                  : "bg-brand-600 text-white hover:bg-brand-700",
-              )}
-            >
-              {interview.meeting_embeddable ? (
-                <ExternalLink className="h-4 w-4" />
-              ) : (
-                <Video className="h-4 w-4" />
-              )}
-              {interview.meeting_embeddable ? t("interviews.detail.openExternally") : t("interviews.detail.joinMeeting")}
-            </a>
-            <a
-              href={interview.meeting_link}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 text-sm font-medium text-brand-600 hover:text-brand-800 break-all"
-            >
-              <ExternalLink className="h-4 w-4 flex-shrink-0" />
-              {interview.meeting_link}
-            </a>
-            <button
-              onClick={handleCopyLink}
-              className="inline-flex items-center gap-1 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 transition-colors"
-            >
-              {copied ? (
-                <>
-                  <CheckCircle className="h-3.5 w-3.5 text-green-600" /> {t("interviews.detail.copied")}
-                </>
-              ) : (
-                <>
-                  <Copy className="h-3.5 w-3.5" /> {t("interviews.detail.copyLink")}
-                </>
-              )}
-            </button>
-            <button
-              onClick={() => sendInvitationMutation.mutate()}
-              disabled={sendInvitationMutation.isPending}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-green-600 px-4 py-1.5 text-xs font-medium text-white shadow-sm hover:bg-green-700 disabled:opacity-50 transition-colors"
-            >
-              <Mail className="h-3.5 w-3.5" />
-              {sendInvitationMutation.isPending ? t("interviews.detail.sending") : t("interviews.detail.sendInvitation")}
-            </button>
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-center">
+          <div className="flex min-w-[220px] items-center gap-3"><span className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-100 text-brand-600"><Calendar className="h-5 w-5" /></span><div><h3 className="text-sm font-semibold text-gray-900">Ready for the meeting?</h3><p className="text-xs text-gray-500">Use the in-app room or share the link.</p></div></div>
+          <div className="flex flex-1 flex-wrap items-center gap-2">
+            {interview.meeting_embeddable && <Link to={"/interviews/" + interview.id + "/room"} className={buttonVariants()}><Video className="h-4 w-4" />{t("interviews.detail.joinRoom")}</Link>}
+            <a href={interview.meeting_link} target="_blank" rel="noopener noreferrer" className={buttonVariants({ variant: "outline" })}><ExternalLink className="h-4 w-4" />{interview.meeting_embeddable ? t("interviews.detail.openExternally") : t("interviews.detail.joinMeeting")}</a>
+            <Button variant="outline" onClick={handleCopyLink}>{copied ? <CheckCircle className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}{copied ? t("interviews.detail.copied") : t("interviews.detail.copyLink")}</Button>
+            <Button variant="outline" onClick={() => sendInvitationMutation.mutate()} disabled={sendInvitationMutation.isPending} className="border-green-300 text-green-700 hover:bg-green-50"><Mail className="h-4 w-4" />{sendInvitationMutation.isPending ? t("interviews.detail.sending") : t("interviews.detail.sendInvitation")}</Button>
           </div>
-
-          {invitationSent && (
-            <div className="flex items-center gap-2 rounded-md bg-green-50 border border-green-200 px-3 py-2">
-              <CheckCircle className="h-4 w-4 text-green-600" />
-              <p className="text-sm text-green-800">{t("interviews.detail.invitationSent")}</p>
-            </div>
-          )}
-
-          {sendInvitationMutation.isError && (
-            <p className="text-sm text-red-600">
-              {(sendInvitationMutation.error as any)?.response?.data?.error?.message || t("interviews.detail.sendInvitationError")}
-            </p>
-          )}
+          <div className="min-w-0 border-gray-200 xl:w-72 xl:border-l xl:pl-4"><p className="text-[11px] text-gray-400">{t("interviews.detail.meetingLink")}</p><div className="flex items-center gap-2"><a href={interview.meeting_link} target="_blank" rel="noopener noreferrer" className="truncate text-xs font-medium text-gray-700 hover:text-brand-600">{interview.meeting_link}</a><Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={handleCopyLink}><Copy className="h-4 w-4" /></Button></div></div>
         </div>
       )}
-    </div>
+      {invitationSent && <div className="mt-3 flex items-center gap-2 rounded-md bg-green-50 px-3 py-2 text-sm text-green-700"><CheckCircle className="h-4 w-4" />{t("interviews.detail.invitationSent")}</div>}
+      {sendInvitationMutation.isError && <p className="mt-2 text-sm text-red-600">{(sendInvitationMutation.error as any)?.response?.data?.error?.message || t("interviews.detail.sendInvitationError")}</p>}
+    </Card>
   );
 }
-
 // ---------------------------------------------------------------------------
 // Calendar Links Section
 // ---------------------------------------------------------------------------
@@ -507,8 +410,8 @@ function CalendarLinksSection({ interviewId }: { interviewId: string }) {
   if (isLoading || !calendarLinks) return null;
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-5">
-      <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2 mb-4">
+    <Card className="p-5">
+      <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-gray-900">
         <Calendar className="h-5 w-5 text-gray-400" /> {t("interviews.detail.addToCalendar")}
       </h3>
       <div className="flex flex-wrap gap-2">
@@ -548,7 +451,7 @@ function CalendarLinksSection({ interviewId }: { interviewId: string }) {
           {t("interviews.detail.downloadIcs")}
         </a>
       </div>
-    </div>
+    </Card>
   );
 }
 
@@ -581,7 +484,7 @@ function RecordingSection({ interviewId }: { interviewId: string }) {
     },
   });
 
-  // The interview's current transcript — used to show per-recording status
+  // The interview's current transcript â€” used to show per-recording status
   // (transcribing / ready / failed) right on the row. Polls while processing.
   const { data: transcript } = useQuery({
     queryKey: ["transcript", interviewId],
@@ -611,7 +514,7 @@ function RecordingSection({ interviewId }: { interviewId: string }) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["recordings", interviewId] });
-      // Upload auto-starts transcription — refetch so the Transcript section
+      // Upload auto-starts transcription â€” refetch so the Transcript section
       // picks up the new "processing" row and polls until it completes.
       queryClient.invalidateQueries({ queryKey: ["transcript", interviewId] });
       setUploadProgress(null);
@@ -650,9 +553,9 @@ function RecordingSection({ interviewId }: { interviewId: string }) {
   };
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-5">
+    <Card className="p-5">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+        <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-900">
           <Mic className="h-5 w-5 text-gray-400" /> {t("interviews.detail.recordings")} ({recordings.length})
         </h3>
         <div>
@@ -663,14 +566,14 @@ function RecordingSection({ interviewId }: { interviewId: string }) {
             onChange={handleFileChange}
             className="hidden"
           />
-          <button
+          <Button
             onClick={() => fileInputRef.current?.click()}
             disabled={uploadMutation.isPending}
             className="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-brand-700 disabled:opacity-50 transition-colors"
           >
             <Upload className="h-4 w-4" />
             {uploadMutation.isPending ? t("interviews.detail.uploading") : t("interviews.detail.uploadRecording")}
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -746,13 +649,13 @@ function RecordingSection({ interviewId }: { interviewId: string }) {
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <button
+                    <Button
                       onClick={() => setPreviewId(isOpen ? null : rec.id)}
                       className="inline-flex items-center gap-1 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 transition-colors"
                     >
                       {isOpen ? <X className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
                       {isOpen ? t("interviews.detail.close") : t("interviews.detail.preview")}
-                    </button>
+                    </Button>
                     <a
                       href={fileUrl}
                       download={fileName}
@@ -761,21 +664,21 @@ function RecordingSection({ interviewId }: { interviewId: string }) {
                     >
                       <Download className="h-3.5 w-3.5" />
                     </a>
-                    <button
+                    <Button
                       onClick={() => transcribeMutation.mutate(rec.id)}
                       disabled={transcribeMutation.isPending}
                       className="inline-flex items-center gap-1 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 transition-colors"
                     >
                       <FileText className="h-3.5 w-3.5" />
                       {transcribeMutation.isPending ? t("interviews.detail.generating") : t("interviews.detail.generateTranscript")}
-                    </button>
-                    <button
+                    </Button>
+                    <Button
                       onClick={() => setRecToDelete(rec.id)}
                       disabled={deleteMutation.isPending}
                       className="inline-flex items-center rounded-md border border-red-200 bg-white p-1.5 text-red-600 hover:bg-red-50 disabled:opacity-50 transition-colors"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
-                    </button>
+                    </Button>
                   </div>
                 </div>
 
@@ -819,7 +722,7 @@ function RecordingSection({ interviewId }: { interviewId: string }) {
         }}
         onCancel={() => setRecToDelete(null)}
       />
-    </div>
+    </Card>
   );
 }
 
@@ -840,8 +743,8 @@ function TranscriptSection({ interviewId }: { interviewId: string }) {
   });
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-5">
-      <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2 mb-4">
+    <Card className="p-5">
+      <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-gray-900">
         <FileText className="h-5 w-5 text-gray-400" /> {t("interviews.detail.transcript")}
       </h3>
 
@@ -883,16 +786,16 @@ function TranscriptSection({ interviewId }: { interviewId: string }) {
             </p>
           )}
 
-          {/* AI Analysis — score + feedback generated from this transcript */}
+          {/* AI Analysis â€” score + feedback generated from this transcript */}
           <AiAnalysisCard interviewId={interviewId} embedded />
         </div>
       )}
-    </div>
+    </Card>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Summary (HR notes) — standalone card
+// Summary (HR notes) â€” standalone card
 // ---------------------------------------------------------------------------
 function InterviewSummaryCard({ interview }: { interview: InterviewDetail }) {
   const { t } = useTranslation();
@@ -912,25 +815,25 @@ function InterviewSummaryCard({ interview }: { interview: InterviewDetail }) {
   });
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-5">
-      <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2 mb-4">
+    <Card className="p-5">
+      <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-gray-900">
         <FileText className="h-5 w-5 text-gray-400" /> {t("interviews.detail.summaryTitle")}
       </h3>
-      <textarea
+      <Textarea
         value={summary}
         onChange={(e) => setSummary(e.target.value)}
-        rows={4}
-        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
+        rows={3}
+        className="min-h-12 h-12 resize-y"
         placeholder={t("interviews.detail.summaryPlaceholder")}
       />
       <div className="mt-2 flex items-center gap-3">
-        <button
+        <Button
           onClick={() => saveSummaryMutation.mutate()}
           disabled={saveSummaryMutation.isPending}
           className="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-brand-700 disabled:opacity-50 transition-colors"
         >
           {saveSummaryMutation.isPending ? t("interviews.detail.saving") : t("interviews.detail.saveSummary")}
-        </button>
+        </Button>
         {saveSummarySuccess && (
           <span className="flex items-center gap-1 text-sm text-green-600">
             <CheckCircle className="h-4 w-4" /> {t("interviews.detail.saved")}
@@ -940,7 +843,7 @@ function InterviewSummaryCard({ interview }: { interview: InterviewDetail }) {
           <span className="text-sm text-red-600">{t("interviews.detail.saveSummaryError")}</span>
         )}
       </div>
-    </div>
+    </Card>
   );
 }
 
@@ -1034,180 +937,99 @@ export function InterviewDetailPage() {
     const u = orgUsers.find((x) => x.id === uid);
     return u ? `${u.first_name} ${u.last_name}`.trim() || u.email : `User #${uid}`;
   };
-  // Users not already on the panel — candidates for the Add Panelist picker.
+  // Users not already on the panel â€” candidates for the Add Panelist picker.
   const availablePanelistUsers = orgUsers.filter(
     (u) => !interview.panelists.some((p) => p.user_id === u.id),
   );
 
   return (
-    <div className="mx-auto w-full max-w-[1500px] space-y-5 pb-8 sm:space-y-6">
+    <div className="space-y-4 pb-4">
       {/* Back + header */}
-      <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#111a35] via-[#18244a] to-brand-900 p-5 text-white shadow-xl dark:shadow-none sm:p-8">
-        <div className="pointer-events-none absolute -right-16 -top-20 h-64 w-64 rounded-full bg-brand-400/20 blur-3xl" aria-hidden="true" />
-        <div className="relative">
-        <button
-          type="button"
-          onClick={() => navigate("/interviews")}
-          className="mb-5 inline-flex min-h-10 items-center gap-2 rounded-lg px-2 text-sm font-semibold text-slate-300 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
-        >
-          <ArrowLeft className="h-4 w-4" aria-hidden="true" /> {t("interviews.detail.backToInterviews")}
-        </button>
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div className="min-w-0">
-            <p className="mb-2 text-xs font-bold uppercase tracking-[0.16em] text-brand-200">Interview Workspace</p>
-            <h1 className="break-words text-balance text-2xl font-bold tracking-tight sm:text-3xl lg:text-4xl">{interview.title}</h1>
-            <p className="mt-2 break-words text-sm leading-6 text-slate-300 sm:text-base">
+      <div>
+        <Button variant="ghost" size="sm" onClick={() => navigate("/interviews")} className="mb-3 -ml-2 px-2 text-gray-500">
+          <ArrowLeft className="h-4 w-4" /> {t("interviews.detail.backToInterviews")}
+        </Button>
+        <div className="flex items-start justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">{interview.title}</h1>
+            <p className="mt-1 text-sm text-gray-500">
               {interview.candidate_name} &mdash; {interview.job_title}
             </p>
           </div>
           <span
             className={cn(
-              "shrink-0 rounded-full px-3 py-1.5 text-sm font-semibold capitalize ring-1 ring-inset ring-white/20",
+              "rounded-lg border border-brand-200 px-3 py-2 text-sm font-medium capitalize",
               STATUS_COLORS[interview.status] || "bg-gray-100 text-gray-800",
             )}
           >
             {enumLabel(t, "interviewStatus", interview.status)}
           </span>
         </div>
-        </div>
-      </section>
+      </div>
 
-      {/* Info cards */}
-      <section aria-label="Interview details" className="grid grid-cols-1 gap-3 min-[430px]:grid-cols-2 lg:grid-cols-4">
-        <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
-          <div className="flex items-center gap-2 text-sm text-gray-500 mb-1">
-            <Calendar className="h-4 w-4" aria-hidden="true" /> {t("interviews.detail.schedule")}
-          </div>
-          <p className="text-sm font-medium text-gray-900">{formatDate(interview.scheduled_at)}</p>
-          <p className="text-xs text-gray-500">{formatTime(interview.scheduled_at)}</p>
-        </div>
-        <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
-          <div className="flex items-center gap-2 text-sm text-gray-500 mb-1">
-            <Clock className="h-4 w-4" aria-hidden="true" /> {t("interviews.detail.duration")}
-          </div>
-          <p className="text-sm font-medium text-gray-900">{t("interviews.detail.durationMinutes", { minutes: interview.duration_minutes })}</p>
-          <p className="text-xs text-gray-500 capitalize">{interview.type} &middot; {t("interviews.detail.round", { round: interview.round })}</p>
-        </div>
-        {interview.location && (
-          <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
-            <div className="flex items-center gap-2 text-sm text-gray-500 mb-1">
-              <MapPin className="h-4 w-4" aria-hidden="true" /> {t("interviews.detail.location")}
-            </div>
-            <p className="break-words text-sm font-medium text-gray-900">{interview.location}</p>
-          </div>
-        )}
-        {interview.meeting_link && (
-          <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
-            <div className="flex items-center gap-2 text-sm text-gray-500 mb-1">
-              <ExternalLink className="h-4 w-4" aria-hidden="true" /> {t("interviews.detail.meetingLink")}
-            </div>
-            {interview.meeting_embeddable ? (
-              /* Embedded providers (Jitsi/LiveKit): join in-app. */
-              <Link
-                to={`/interviews/${interview.id}/room`}
-                className="inline-flex min-h-10 items-center gap-2 rounded-lg text-sm font-semibold text-brand-600 transition-colors hover:text-brand-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
-              >
-                <Video className="h-4 w-4" /> {t("interviews.detail.joinRoom")}
-              </Link>
-            ) : (
-              <a
-                href={interview.meeting_link}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex min-h-10 items-center break-all rounded-lg text-sm font-semibold text-brand-600 transition-colors hover:text-brand-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
-              >
-                {t("interviews.detail.joinMeeting")}
-              </a>
-            )}
-          </div>
-        )}
-      </section>
-
-      {/* Status actions */}
-      {interview.status !== "completed" && interview.status !== "cancelled" && (
-        <section className="flex flex-col gap-3 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:flex-row sm:items-center">
-          <span className="shrink-0 text-sm font-semibold text-gray-700">{t("interviews.detail.changeStatus")}</span>
-          <div className="flex flex-wrap gap-2">
-          {(["in_progress", "completed", "cancelled", "no_show"] as InterviewStatus[])
-            .filter((s) => s !== interview.status)
-            .map((status) => (
-              <button
-                type="button"
-                key={status}
-                onClick={() => statusMutation.mutate(status)}
-                disabled={statusMutation.isPending}
-                className="min-h-10 rounded-xl border border-gray-300 bg-white px-3 py-2 text-xs font-semibold capitalize text-gray-700 transition-colors hover:border-brand-300 hover:bg-brand-50 hover:text-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {status.replace("_", " ")}
-              </button>
-            ))}
-          </div>
-        </section>
-      )}
-
+      {/* Interview overview */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <Card className="relative overflow-hidden p-4"><div className="flex items-center gap-3"><span className="flex h-11 w-11 items-center justify-center rounded-xl bg-brand-50 text-brand-600"><Calendar className="h-5 w-5" /></span><div><p className="text-xs font-medium text-gray-500">{t("interviews.detail.schedule")}</p><p className="mt-1 text-sm font-semibold text-gray-900">{formatDate(interview.scheduled_at)}</p><p className="text-xs text-gray-400">{formatTime(interview.scheduled_at)}</p></div></div></Card>
+        <Card className="relative overflow-hidden p-4"><div className="flex items-center gap-3"><span className="flex h-11 w-11 items-center justify-center rounded-xl bg-brand-50 text-brand-600"><Clock className="h-5 w-5" /></span><div><p className="text-xs font-medium text-gray-500">{t("interviews.detail.duration")}</p><p className="mt-1 text-sm font-semibold text-gray-900">{t("interviews.detail.durationMinutes", { minutes: interview.duration_minutes })}</p><p className="text-xs capitalize text-gray-400">{interview.type} Â· {t("interviews.detail.round", { round: interview.round })}</p></div></div></Card>
+        <Card className="relative overflow-hidden p-4"><div className="flex items-center gap-3"><span className="flex h-11 w-11 items-center justify-center rounded-xl bg-brand-50 text-brand-600"><Video className="h-5 w-5" /></span><div className="min-w-0"><p className="text-xs font-medium text-gray-500">{t("interviews.detail.meetingLink")}</p><p className="mt-1 truncate text-sm font-semibold text-gray-900">{PROVIDER_LABELS[interview.meeting_provider || ""] || interview.meeting_provider || "Not configured"}</p><p className="truncate text-xs text-gray-400">{interview.location || "Online meeting"}</p>{interview.meeting_embeddable && <Link to={"/interviews/" + interview.id + "/room"} className="mt-1.5 inline-flex items-center gap-1 rounded-md bg-brand-600 px-3 py-1 text-xs font-medium text-white hover:bg-brand-700"><Video className="h-3 w-3" />{t("interviews.detail.joinRoom")}</Link>}</div></div></Card>
+        <Card className="relative overflow-hidden p-4"><div className="flex items-center gap-3"><span className="flex h-11 w-11 items-center justify-center rounded-xl bg-brand-50 text-brand-600"><CheckCircle className="h-5 w-5" /></span><div><p className="text-xs font-medium text-gray-500">Status</p><p className="mt-1 text-sm font-semibold capitalize text-gray-900">{enumLabel(t, "interviewStatus", interview.status)}</p><Badge className={cn("mt-1 border-0 capitalize", STATUS_COLORS[interview.status])}>{enumLabel(t, "interviewStatus", interview.status)}</Badge></div></div></Card>
+      </div>
       {/* Meeting Link Section */}
       <MeetingLinkSection interview={interview} />
 
-      {/* Calendar Links Section */}
-      <CalendarLinksSection interviewId={interview.id} />
 
+      {/* Status and calendar actions */}
+      <div className="grid gap-4 xl:grid-cols-2">
+        <Card className="p-4">
+          <h2 className="flex items-center gap-2 text-sm font-semibold text-gray-900"><Clock className="h-4 w-4 text-gray-400" />{t("interviews.detail.changeStatus")}</h2>
+          {interview.status !== "completed" && interview.status !== "cancelled" ? (
+            <div className="mt-3 flex flex-wrap gap-2">
+              {(["in_progress", "completed", "cancelled", "no_show"] as InterviewStatus[]).filter((value) => value !== interview.status).map((value) => (
+                <Button key={value} variant="outline" size="sm" onClick={() => statusMutation.mutate(value)} disabled={statusMutation.isPending} className="capitalize">{enumLabel(t, "interviewStatus", value)}</Button>
+              ))}
+            </div>
+          ) : <p className="mt-3 text-sm capitalize text-gray-500">{enumLabel(t, "interviewStatus", interview.status)}</p>}
+        </Card>
+        <CalendarLinksSection interviewId={interview.id} />
+      </div>
+      <div className="grid items-stretch gap-4 xl:grid-cols-2">
       {/* Notes */}
       {interview.notes && (
-        <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
-          <h3 className="text-sm font-medium text-gray-700 mb-1">{t("interviews.detail.notes")}</h3>
+        <Card className="h-full p-4">
+          <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold text-gray-900"><FileText className="h-4 w-4 text-gray-400" />{t("interviews.detail.notes")}</h3>
           <p className="text-sm text-gray-600 whitespace-pre-wrap">{interview.notes}</p>
-        </div>
+        </Card>
       )}
 
       {/* Panelists */}
-      <section className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
-        <div className="flex flex-col gap-3 border-b border-gray-200 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
-          <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-            <Users className="h-5 w-5 text-gray-400" aria-hidden="true" /> {t("interviews.detail.panelists")} ({interview.panelists.length})
+      <Card className="h-full overflow-hidden">
+        <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
+          <h2 className="flex items-center gap-2 text-sm font-semibold text-gray-900">
+            <Users className="h-5 w-5 text-gray-400" /> {t("interviews.detail.panelists")} ({interview.panelists.length})
           </h2>
           {!showAddPanelist && (
-            <button
+            <Button
               onClick={() => setShowAddPanelist(true)}
-              className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-xl border border-brand-200 bg-brand-50 px-3 py-1.5 text-sm font-semibold text-brand-700 transition-colors hover:bg-brand-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-brand-200 bg-brand-50 px-3 py-1.5 text-sm font-medium text-brand-700 hover:bg-brand-100"
             >
               <UserPlus className="h-4 w-4" /> {t("interviews.detail.addPanelist")}
-            </button>
+            </Button>
           )}
         </div>
 
         {showAddPanelist && (
-          <div className="border-b border-gray-200 bg-gray-50 px-4 py-4 sm:px-6">
+          <div className="border-b border-gray-200 bg-gray-50 px-6 py-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
               <div className="min-w-0 flex-1">
                 <label className="mb-1 block text-xs font-medium text-gray-500">{t("interviews.detail.teamMember")}</label>
-                <select
-                  value={panelistUserId}
-                  onChange={(e) => setPanelistUserId(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
-                >
-                  <option value="">{t("interviews.detail.selectPerson")}</option>
-                  {availablePanelistUsers.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {`${u.first_name} ${u.last_name}`.trim() || u.email}
-                    </option>
-                  ))}
-                </select>
+                <Select value={panelistUserId || undefined} onValueChange={setPanelistUserId}><SelectTrigger><SelectValue placeholder={t("interviews.detail.selectPerson")} /></SelectTrigger><SelectContent>{availablePanelistUsers.map((u) => <SelectItem key={u.id} value={String(u.id)}>{(u.first_name + " " + u.last_name).trim() || u.email}</SelectItem>)}</SelectContent></Select>
               </div>
               <div>
                 <label className="mb-1 block text-xs font-medium text-gray-500">{t("interviews.detail.role")}</label>
-                <select
-                  value={panelistRole}
-                  onChange={(e) => setPanelistRole(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500 sm:w-40"
-                >
-                  <option value="interviewer">{t("interviews.detail.roleInterviewer")}</option>
-                  <option value="lead">{t("interviews.detail.roleLead")}</option>
-                  <option value="observer">{t("interviews.detail.roleObserver")}</option>
-                </select>
+                <Select value={panelistRole} onValueChange={setPanelistRole}><SelectTrigger className="sm:w-40"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="interviewer">{t("interviews.detail.roleInterviewer")}</SelectItem><SelectItem value="lead">{t("interviews.detail.roleLead")}</SelectItem><SelectItem value="observer">{t("interviews.detail.roleObserver")}</SelectItem></SelectContent></Select>
               </div>
               <div className="flex gap-2">
-                <button
-                  type="button"
+                <Button
                   onClick={() => {
                     if (!panelistUserId) {
                       toast.error(t("interviews.detail.selectTeamMember"));
@@ -1219,17 +1041,18 @@ export function InterviewDetailPage() {
                   className="rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50"
                 >
                   {addPanelistMutation.isPending ? t("interviews.detail.adding") : t("interviews.detail.add")}
-                </button>
-                <button
+                </Button>
+                <Button
                   type="button"
+                  variant="outline"
                   onClick={() => {
                     setShowAddPanelist(false);
                     setPanelistUserId("");
                   }}
-                  className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                  className="text-gray-700 hover:text-gray-900"
                 >
                   {t("interviews.detail.cancel")}
-                </button>
+                </Button>
               </div>
             </div>
             {availablePanelistUsers.length === 0 && (
@@ -1254,17 +1077,17 @@ export function InterviewDetailPage() {
                   .slice(0, 2)
                   .toUpperCase();
             return (
-              <div key={panelist.id} className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
-                <div className="flex min-w-0 items-center gap-3">
+              <div key={panelist.id} className="flex items-center justify-between px-6 py-3">
+                <div className="flex items-center gap-3">
                   <div className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-100 text-xs font-medium text-brand-700">
                     {initials}
                   </div>
-                  <div className="min-w-0">
-                    <p className="break-words text-sm font-medium text-gray-900">{name}</p>
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">{name}</p>
                     <p className="text-xs text-gray-500 capitalize">{panelist.role}</p>
                   </div>
                 </div>
-                <div className="flex items-center justify-between gap-3 sm:justify-end">
+                <div className="flex items-center gap-3">
                   {fb ? (
                     <span className="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800">
                       {t("interviews.detail.feedbackSubmitted")}
@@ -1274,26 +1097,30 @@ export function InterviewDetailPage() {
                       {t("interviews.detail.pending")}
                     </span>
                   )}
-                  <button
+                  <Button
                     onClick={() => removePanelistMutation.mutate(panelist.user_id)}
                     disabled={removePanelistMutation.isPending}
-                    aria-label={`${t("interviews.detail.removePanelist")}: ${name}`}
-                    className="rounded-lg p-2 text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 disabled:opacity-50"
+                    title={t("interviews.detail.removePanelist")}
+                    aria-label={t("interviews.detail.removePanelist")}
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-gray-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
                   >
-                    <X className="h-4 w-4" aria-hidden="true" />
-                  </button>
+                    <X className="h-4 w-4" />
+                  </Button>
                 </div>
               </div>
             );
           })}
         </div>
-      </section>
+      </Card>
 
-      {/* Recording Section */}
-      <RecordingSection interviewId={interview.id} />
+      </div>
 
-      {/* Transcript Section (includes Summary + AI Analysis) */}
-      <TranscriptSection interviewId={interview.id} />
+      <div className="grid gap-4 xl:grid-cols-2">
+        <RecordingSection interviewId={interview.id} />
+        <TranscriptSection interviewId={interview.id} />
+      </div>
 
       {/* Feedback form (if current user is panelist and hasn't submitted) */}
       {showFeedbackForm && (
@@ -1314,9 +1141,9 @@ export function InterviewDetailPage() {
             return (
               <div
                 key={fb.id}
-                className="space-y-3 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm"
+                className="rounded-lg border border-gray-200 bg-white p-5 space-y-3"
               >
-                <div className="flex flex-col gap-3 min-[430px]:flex-row min-[430px]:items-center min-[430px]:justify-between">
+                <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <div className="flex h-7 w-7 items-center justify-center rounded-full bg-gray-100 text-xs font-medium text-gray-700">
                       {fb.panelist_id}
@@ -1408,7 +1235,7 @@ export function InterviewDetailPage() {
         </div>
       )}
 
-      {/* Summary (HR notes) — standalone card, last */}
+      {/* Summary (HR notes) â€” standalone card, last */}
       <InterviewSummaryCard interview={interview} />
     </div>
   );

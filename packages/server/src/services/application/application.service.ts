@@ -251,6 +251,17 @@ export async function getActivity(orgId: number, applicationId: string): Promise
   return result.data.map((r) => ({ ...r, actor_name: r.actor_id != null ? names.get(r.actor_id) ?? null : null }));
 }
 
+export async function getApplicationStats(orgId: number) {
+  const db = getDB();
+  const rows = await db.raw<any[][]>(`SELECT COUNT(*) AS total,
+    SUM(CASE WHEN applied_at >= DATE_SUB(NOW(), INTERVAL 7 DAY) THEN 1 ELSE 0 END) AS newThisWeek,
+    SUM(CASE WHEN stage IN ('screened','offer') THEN 1 ELSE 0 END) AS inReview,
+    SUM(CASE WHEN stage = 'interview' THEN 1 ELSE 0 END) AS interviewing,
+    SUM(CASE WHEN stage = 'rejected' THEN 1 ELSE 0 END) AS rejected
+    FROM applications WHERE organization_id = ?`, [orgId]);
+  const s = rows[0]?.[0] ?? {};
+  return { total: Number(s.total ?? 0), newThisWeek: Number(s.newThisWeek ?? 0), inReview: Number(s.inReview ?? 0), interviewing: Number(s.interviewing ?? 0), rejected: Number(s.rejected ?? 0) };
+}
 export async function listApplications(
   orgId: number,
   params: {

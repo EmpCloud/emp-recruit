@@ -200,50 +200,33 @@ export async function updateCandidate(
   return db.update<Candidate>("candidates", id, updates);
 }
 
-export async function listCandidates(
-  orgId: number,
-  params: { page?: number; perPage?: number; search?: string; sort?: string; order?: "asc" | "desc" },
-): Promise<{ data: Candidate[]; total: number; page: number; perPage: number }> {
+export async function getCandidateStats(orgId: number) {
   const db = getDB();
-  const page = params.page ?? 1;
-  const perPage = params.perPage ?? 20;
-  // Allowlist the sort column — `params.sort` is a free-form request string and
-  // must never be interpolated into SQL raw (injection).
-  const { column, direction } = safeOrderBy(
-    params.sort,
-    params.order,
-    ["created_at", "updated_at", "first_name", "last_name", "email", "current_company", "experience_years"],
-    "created_at",
-  );
-
-  if (params.search) {
-    const search = `%${params.search.trim().replace(/\s+/g, " ")}%`;
-    const offset = (page - 1) * perPage;
-
-    const countRows = await db.raw<any[][]>(
-      "SELECT COUNT(*) as total FROM candidates WHERE organization_id = ? AND archived_at IS NULL AND (first_name LIKE ? OR last_name LIKE ? OR CONCAT_WS(' ', first_name, last_name) LIKE ? OR email LIKE ? OR current_company LIKE ?)",
-      [orgId, search, search, search, search, search],
-    );
-    const total = Number(countRows[0]?.[0]?.total ?? 0);
-
-    const dataRows = await db.raw<any[][]>(
-      `SELECT * FROM candidates WHERE organization_id = ? AND archived_at IS NULL AND (first_name LIKE ? OR last_name LIKE ? OR CONCAT_WS(' ', first_name, last_name) LIKE ? OR email LIKE ? OR current_company LIKE ?) ORDER BY \`${column}\` ${direction} LIMIT ? OFFSET ?`,
-      [orgId, search, search, search, search, search, perPage, offset],
-    );
-
-    return { data: dataRows[0] as Candidate[], total, page, perPage };
-  }
-
-  const result = await db.findMany<Candidate>("candidates", {
-    page,
-    limit: perPage,
-    filters: { organization_id: orgId, archived_at: null },
-    sort: { field: column, order: direction.toLowerCase() as "asc" | "desc" },
-  });
-
-  return { data: result.data, total: result.total, page, perPage };
+  const rows = await db.raw<any[][]>(`SELECT COUNT(DISTINCT c.id) AS total,
+    COUNT(DISTINCT CASE WHEN c.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY) THEN c.id END) AS newThisWeek,
+    COUNT(DISTINCT CASE WHEN a.stage = 'interview' THEN c.id END) AS interviewing,
+    COUNT(DISTINCT CASE WHEN a.stage IN ('screened','interview','offer') THEN c.id END) AS shortlisted
+    FROM candidates c LEFT JOIN applications a ON a.candidate_id = c.id AND a.organization_id = c.organization_id
+    WHERE c.organization_id = ? AND c.archived_at IS NULL`, [orgId]);
+  const s = rows[0]?.[0] ?? {};
+  return { total: Number(s.total ?? 0), newThisWeek: Number(s.newThisWeek ?? 0), interviewing: Number(s.interviewing ?? 0), shortlisted: Number(s.shortlisted ?? 0) };
 }
 
+export async function listCandidates(orgId: number, params: { page?: number; perPage?: number; search?: string; sort?: string; order?: "asc" | "desc"; source?: string; experience?: string; stage?: string }): Promise<{ data: Candidate[]; total: number; page: number; perPage: number }> {
+  const db = getDB(); const page = params.page ?? 1; const perPage = params.perPage ?? 20; const offset = (page - 1) * perPage;
+  const { column, direction } = safeOrderBy(params.sort, params.order, ["created_at","updated_at","first_name","last_name","email","current_company","experience_years"], "created_at");
+  const clauses = ["c.organization_id = ?", "c.archived_at IS NULL"]; const values: unknown[] = [orgId];
+  if (params.search) { const q = `%${params.search.trim().replace(/\s+/g, " ")}%`; clauses.push("(c.first_name LIKE ? OR c.last_name LIKE ? OR CONCAT_WS(' ', c.first_name, c.last_name) LIKE ? OR c.email LIKE ? OR c.current_company LIKE ?)"); values.push(q,q,q,q,q); }
+  if (params.source) { clauses.push("c.source = ?"); values.push(params.source); }
+  if (params.experience === "entry") clauses.push("c.experience_years < 2");
+  if (params.experience === "mid") clauses.push("c.experience_years >= 2 AND c.experience_years < 5");
+  if (params.experience === "senior") clauses.push("c.experience_years >= 5");
+  if (params.stage) { clauses.push("EXISTS (SELECT 1 FROM applications a WHERE a.candidate_id = c.id AND a.organization_id = c.organization_id AND a.stage = ?)"); values.push(params.stage); }
+  const where = clauses.join(" AND ");
+  const countRows = await db.raw<any[][]>(`SELECT COUNT(*) AS total FROM candidates c WHERE ${where}`, values);
+  const dataRows = await db.raw<any[][]>(`SELECT c.* FROM candidates c WHERE ${where} ORDER BY c.\`${column}\` ${direction} LIMIT ? OFFSET ?`, [...values, perPage, offset]);
+  return { data: dataRows[0] as Candidate[], total: Number(countRows[0]?.[0]?.total ?? 0), page, perPage };
+}
 export async function archiveCandidate(orgId: number, id: string, userId: number): Promise<Candidate> {
   const db = getDB();
   const candidate = await db.findOne<Candidate>("candidates", { id, organization_id: orgId });

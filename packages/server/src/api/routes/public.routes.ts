@@ -158,13 +158,14 @@ router.get("/career-page/:slug", async (req: Request, res: Response, next: NextF
 // ---------------------------------------------------------------------------
 router.get("/careers/:slug/jobs", async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { page, perPage, search, department, location } = req.query;
+    const { page, perPage, search, department, location, sort } = req.query;
     const result = await careerPageService.getPublicJobs(String(req.params.slug), {
       page: page ? parsePage(page) : undefined,
       perPage: perPage ? parseLimit(perPage) : undefined,
       search: search ? String(search) : undefined,
       department: department ? String(department) : undefined,
       location: location ? String(location) : undefined,
+      sort: sort === "oldest" ? "oldest" : "newest",
     });
     sendSuccess(res, result);
   } catch (err) {
