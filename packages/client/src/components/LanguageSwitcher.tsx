@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Globe, Check } from "lucide-react";
+import { Check, ChevronDown, Globe } from "lucide-react";
 import { LANGUAGES } from "@/i18n";
 import { cn } from "@/lib/utils";
 
@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils";
  * (endonym) and switches the active language via i18next (persisted to
  * localStorage; Arabic flips the layout to RTL).
  */
-export function LanguageSwitcher() {
+export function LanguageSwitcher({ showLabel = false }: { showLabel?: boolean }) {
   const { t, i18n } = useTranslation();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -49,10 +49,20 @@ export function LanguageSwitcher() {
         aria-label={t("nav.changeLanguage")}
         aria-haspopup="listbox"
         aria-expanded={open}
-        className="inline-flex items-center gap-1.5 rounded-lg px-2 py-2 text-sm font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+        className={cn(
+          "inline-flex items-center gap-1.5 rounded-lg border border-transparent px-2 py-2 text-sm font-medium text-gray-500 transition hover:bg-gray-100 hover:text-gray-700",
+          showLabel && "border-gray-200 bg-white px-3 shadow-sm",
+        )}
       >
         <Globe className="h-4 w-4" />
-        <span className="hidden text-xs font-medium sm:inline">{activeLanguage.flag}</span>
+        {showLabel ? (
+          <span className="text-xs font-medium">{activeLanguage.label}</span>
+        ) : (
+          <span className="hidden text-xs font-medium sm:inline">
+            {activeLanguage.flag}
+          </span>
+        )}
+        {showLabel && <ChevronDown className="h-3.5 w-3.5" />}
       </button>
 
       {open && (
